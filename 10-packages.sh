@@ -27,7 +27,9 @@ configure_vscode_repo() {
     apt_installed wget || prereqs+=(wget)
     apt_installed gpg  || prereqs+=(gpg)
     if [ ${#prereqs[@]} -gt 0 ]; then
+        apt_wait_for_lock
         sudo apt update
+        apt_wait_for_lock
         sudo apt install -y "${prereqs[@]}"
     fi
 
@@ -48,8 +50,48 @@ EOF
     ok "VS Code repo configured"
 }
 
-configure_vscode_repo
+configure_hashicorp_repo() {
+    local keyring="/etc/apt/keyrings/hashicorp-archive-keyring.gpg"
+    local sources="/etc/apt/sources.list.d/hashicorp.sources"
 
+    if [ -f "$keyring" ] && [ -f "$sources" ]; then
+        skip "HashiCorp repo already configured"
+        return
+    fi
+
+    log "Configuring HashiCorp apt repository (for terraform)"
+
+    local prereqs=()
+    apt_installed wget || prereqs+=(wget)
+    apt_installed gpg  || prereqs+=(gpg)
+    if [ ${#prereqs[@]} -gt 0 ]; then
+        apt_wait_for_lock
+        sudo apt update
+        apt_wait_for_lock
+        sudo apt install -y "${prereqs[@]}"
+    fi
+
+    sudo install -d -m 0755 /etc/apt/keyrings
+    wget -qO- https://apt.releases.hashicorp.com/gpg \
+        | sudo gpg --dearmor --yes -o "$keyring"
+    sudo chmod 0644 "$keyring"
+
+    # Hardcoded suite — update when upgrading to a new Debian release.
+    sudo tee "$sources" > /dev/null <<EOF
+Types: deb
+URIs: https://apt.releases.hashicorp.com
+Suites: trixie
+Components: main
+Architectures: amd64 arm64
+Signed-By: $keyring
+EOF
+    ok "HashiCorp repo configured"
+}
+
+configure_vscode_repo
+configure_hashicorp_repo
+
+apt_wait_for_lock
 log "Updating apt cache"
 sudo apt update
 
@@ -99,5 +141,6 @@ if [ ${#to_install[@]} -eq 0 ]; then
 fi
 
 log "Installing ${#to_install[@]} packages: ${to_install[*]}"
+apt_wait_for_lock
 sudo apt install -y "${to_install[@]}"
 ok "Package installation complete"

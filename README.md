@@ -124,12 +124,20 @@ Docker is kept on VMs since it is useful inside a Kali VM as well.
   are usually already installed (via `bind9-dnsutils` and `bind9-host`).
 - VS Code (`code`) is not in Debian repos; 10-packages.sh adds the official
   Microsoft apt repository (DEB822 format) and signing key automatically.
+- Terraform is not in Debian repos; 10-packages.sh adds the official HashiCorp
+  apt repository the same way. The Debian suite (`trixie`) is hardcoded — when
+  upgrading to a new Debian release, update both this and the
+  `configure_hashicorp_repo` function.
 - RustHound-CE is built from source via `cargo install rusthound-ce` (Debian's
   rust packages can lag behind what it needs). Build dependencies are pulled
   in automatically; the Rust toolchain itself is installed via `rustup` if
   `cargo` is missing.
 - Wireshark's debconf question is pre-seeded so non-root users in the
   `wireshark` group can capture packets without using sudo.
+- `localectl set-locale` is blocked by Debian's dbus policy (Debian bug
+  #1108144) even as root. 20-locale.sh uses `update-locale` instead, which
+  writes to `/etc/default/locale` — Debian's source of truth for the
+  system locale.
 
 ## Manual steps not automated
 

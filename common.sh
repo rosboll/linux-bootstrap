@@ -88,6 +88,45 @@ apt_installed() {
     dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "ok installed"
 }
 
+# Wait for apt/dpkg locks to be released. KDE's packagekitd and unattended
+# upgrades both grab these locks periodically. Times out after 60 seconds.
+apt_wait_for_lock() {
+    local timeout=60
+    local elapsed=0
+    local locks=(
+        /var/lib/apt/lists/lock
+        /var/lib/dpkg/lock
+        /var/lib/dpkg/lock-frontend
+    )
+
+    while [ "$elapsed" -lt "$timeout" ]; do
+        local locked=0
+        for lock in "${locks[@]}"; do
+            if sudo fuser "$lock" > /dev/null 2>&1; then
+                locked=1
+                break
+            fi
+        done
+        if [ "$locked" -eq 0 ]; then
+            return 0
+        fi
+        if [ "$elapsed" -eq 0 ]; then
+            warn "Waiting for apt lock to be released (held by packagekitd or similar)..."
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+
+    err "apt lock still held after ${timeout}s. Holding process(es):"
+    for lock in "${locks[@]}"; do
+        if sudo fuser "$lock" > /dev/null 2>&1; then
+            sudo fuser -v "$lock" 2>&1 | sed 's/^/    /' >&2
+        fi
+    done
+    err "Try: sudo systemctl stop packagekit"
+    return 1
+}
+
 # Check if the current user belongs to a group.
 in_group() {
     id -nG "$USER" | tr ' ' '\n' | grep -qx "$1"

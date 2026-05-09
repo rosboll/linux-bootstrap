@@ -50,8 +50,11 @@ if [ "$needs_locale_gen" -eq 1 ]; then
 fi
 
 # 2. Set the system locale: language en_US, formats sv_SE.
+#    Debian ships a dbus policy that blocks 'localectl set-locale' even as
+#    root, expecting you to use 'update-locale' instead (which writes to
+#    /etc/default/locale, the Debian source of truth). See Debian bug 1108144.
 log "Setting system locale (LANG=en_US.UTF-8, LC_*=sv_SE.UTF-8)"
-sudo localectl set-locale \
+sudo update-locale \
     LANG=en_US.UTF-8 \
     LC_TIME=sv_SE.UTF-8 \
     LC_NUMERIC=sv_SE.UTF-8 \

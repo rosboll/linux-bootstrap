@@ -47,6 +47,8 @@ bridge-utils            # vm-skip
 docker.io
 
 # Infrastructure tools
+# Note: terraform is not in Debian repos. The HashiCorp apt repository is
+# configured by 10-packages.sh before this list is processed.
 ansible
 terraform
 
