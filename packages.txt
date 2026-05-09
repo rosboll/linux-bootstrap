@@ -1,0 +1,74 @@
+# Base packages for all machines.
+# Lines starting with # are comments. Empty lines are ignored.
+
+# Shell and dotfiles
+zsh
+stow
+zsh-autosuggestions
+zsh-syntax-highlighting
+fzf
+tmux
+vim
+
+# General toolbox
+curl
+wget
+jq
+git
+btop
+tree
+unzip
+ripgrep
+fd-find        # binary is 'fdfind' on Debian
+bat            # binary is 'batcat' on Debian
+
+# Network tools
+# Note: 'nc' from netcat-openbsd is preferred over Trixie's default
+# netcat-traditional (better IPv6 support, -e flag for pentesting).
+nmap
+ncat
+netcat-openbsd
+tcpdump
+whois
+wireshark
+
+# Virtualization (skipped on hosts where is_vm=yes)
+qemu-system-x86         # vm-skip
+qemu-utils              # vm-skip
+libvirt-daemon-system   # vm-skip
+libvirt-clients         # vm-skip
+virt-manager            # vm-skip
+virt-viewer             # vm-skip
+bridge-utils            # vm-skip
+
+# Containers
+# Note: docker-compose (Python v1) was removed from Trixie. docker.io provides
+# 'docker compose' (subcommand) via the integrated compose plugin.
+docker.io
+
+# Infrastructure tools
+ansible
+terraform
+
+# Remote desktop
+rdesktop
+
+# Notes / passwords
+keepassxc
+
+# Browser
+firefox-esr
+
+# Editor
+# Note: VS Code is not in Debian repos. The Microsoft apt repository is
+# configured by 10-packages.sh before this list is processed.
+code
+
+# YubiKey and GPG
+gnupg
+scdaemon
+yubikey-manager
+libpam-u2f
+pamu2fcfg
+
+# Obsidian and Burp are installed separately (not in Debian repos).
