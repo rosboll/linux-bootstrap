@@ -50,12 +50,16 @@ echo
 read -r -p "Press Enter once the key has been added on GitHub... "
 
 # 3. Verify GitHub accepts the key. GitHub returns exit 1 even for successful
-#    auth (because shell access is denied), so we check stderr text instead.
+#    auth (no shell granted), so we capture output and grep it instead of
+#    piping — under `set -o pipefail`, ssh's exit 1 would otherwise propagate
+#    through the pipeline and the success branch would never be taken.
 log "Verifying SSH connection to GitHub"
-if ssh -T -o StrictHostKeyChecking=accept-new git@github.com 2>&1 | grep -q "successfully authenticated"; then
+ssh_output=$(ssh -T -o StrictHostKeyChecking=accept-new git@github.com 2>&1 || true)
+if printf '%s\n' "$ssh_output" | grep -q "successfully authenticated"; then
     ok "GitHub connection verified"
 else
     err "GitHub connection failed. Did you add the key?"
+    printf '%s\n' "$ssh_output" >&2
     exit 1
 fi
 

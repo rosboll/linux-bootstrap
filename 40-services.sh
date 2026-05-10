@@ -35,30 +35,36 @@ for group in "${groups_to_check[@]}"; do
     fi
 done
 
-# 2. Activate libvirt default network — only on non-VM hosts
+# 2. Activate libvirt default network — only on non-VM hosts. The 'default'
+#    network is created by libvirt-daemon-system on install; gate everything
+#    on its existence so a half-installed system doesn't trip set -e.
 if ! is_vm_host && command -v virsh > /dev/null 2>&1; then
-    if sudo virsh net-info default 2>/dev/null | grep -qE "Active:[[:space:]]*yes"; then
-        skip "libvirt default network already active"
-    else
-        log "Starting libvirt default network"
-        # net-start fails if already active; tolerate that.
-        sudo virsh net-start default 2>/dev/null || true
-        ok "libvirt default network started"
-    fi
+    if sudo virsh net-list --all --name 2>/dev/null | grep -qx default; then
+        if sudo virsh net-info default 2>/dev/null | grep -qE "Active:[[:space:]]*yes"; then
+            skip "libvirt default network already active"
+        else
+            log "Starting libvirt default network"
+            sudo virsh net-start default 2>/dev/null || true
+            ok "libvirt default network started"
+        fi
 
-    if sudo virsh net-info default 2>/dev/null | grep -qE "Autostart:[[:space:]]*yes"; then
-        skip "libvirt default network autostart already enabled"
+        if sudo virsh net-info default 2>/dev/null | grep -qE "Autostart:[[:space:]]*yes"; then
+            skip "libvirt default network autostart already enabled"
+        else
+            log "Enabling autostart for libvirt default network"
+            sudo virsh net-autostart default
+            ok "Autostart enabled"
+        fi
     else
-        log "Enabling autostart for libvirt default network"
-        sudo virsh net-autostart default
-        ok "Autostart enabled"
+        warn "libvirt 'default' network not defined — skipping. Re-install libvirt-daemon-system if you expected it."
     fi
 fi
 
-# 3. Ensure docker.service is enabled. Note that docker.io ships a SysV-style
-#    init.d script that systemd wraps, so the unit is named docker.service
-#    regardless.
-if systemctl list-unit-files docker.service 2>/dev/null | grep -q docker.service; then
+# 3. Ensure docker.service is enabled. Skipped in smoke mode — the container
+#    does not run systemd as PID 1, so 'systemctl enable --now' would fail.
+if is_smoke_test; then
+    skip "Smoke test mode — skipping docker.service enable"
+elif systemctl cat docker.service > /dev/null 2>&1; then
     if systemctl is-enabled docker.service > /dev/null 2>&1; then
         skip "docker.service already enabled"
     else

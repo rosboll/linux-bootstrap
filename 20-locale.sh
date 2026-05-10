@@ -15,13 +15,20 @@ require_sudo
 log "Configuring /etc/locale.gen"
 needs_locale_gen=0
 
+# Escape regex metacharacters (mostly the dots in 'sv_SE.UTF-8') for grep/sed.
+escape_regex() {
+    # shellcheck disable=SC2016  # sed expression intentionally literal
+    printf '%s' "$1" | sed -e 's/[.[\*^$()+?{|]/\\&/g'
+}
+
 ensure_uncommented() {
     local locale_line="$1"
-    if grep -qE "^#\s*${locale_line}\b" /etc/locale.gen; then
-        sudo sed -i "s|^#\s*\(${locale_line}\)|\1|" /etc/locale.gen
+    local re; re=$(escape_regex "$locale_line")
+    if grep -qE "^#[[:space:]]*${re}([[:space:]]|$)" /etc/locale.gen; then
+        sudo sed -i -E "s|^#[[:space:]]*(${re})|\\1|" /etc/locale.gen
         log "Uncommented $locale_line"
         needs_locale_gen=1
-    elif grep -qE "^${locale_line}\b" /etc/locale.gen; then
+    elif grep -qE "^${re}([[:space:]]|$)" /etc/locale.gen; then
         skip "$locale_line already enabled"
     else
         warn "Did not find a line for $locale_line in /etc/locale.gen"
@@ -30,8 +37,9 @@ ensure_uncommented() {
 
 ensure_commented() {
     local locale_line="$1"
-    if grep -qE "^${locale_line}\b" /etc/locale.gen; then
-        sudo sed -i "s|^\(${locale_line}\)|# \1|" /etc/locale.gen
+    local re; re=$(escape_regex "$locale_line")
+    if grep -qE "^${re}([[:space:]]|$)" /etc/locale.gen; then
+        sudo sed -i -E "s|^(${re})|# \\1|" /etc/locale.gen
         log "Commented out $locale_line"
         needs_locale_gen=1
     else
@@ -66,11 +74,13 @@ sudo update-locale \
     LC_NAME=sv_SE.UTF-8 \
     LC_IDENTIFICATION=sv_SE.UTF-8
 
-# 3. KDE plasma-localerc — use sv_SE.UTF-8 as format source.
+# 3. KDE plasma-localerc — use sv_SE.UTF-8 as format source. Only write when
+#    the file is missing or differs, so KDE Settings UI tweaks aren't clobbered
+#    on every run.
 PLASMA_LOCALE="$HOME/.config/plasma-localerc"
-log "Configuring $PLASMA_LOCALE"
 mkdir -p "$(dirname "$PLASMA_LOCALE")"
-cat > "$PLASMA_LOCALE" <<'EOF'
+plasma_tmp=$(mktemp)
+cat > "$plasma_tmp" <<'EOF'
 [Formats]
 LANG=en_US.UTF-8
 LC_TIME=sv_SE.UTF-8
@@ -82,7 +92,15 @@ LC_PAPER=sv_SE.UTF-8
 [Translations]
 LANGUAGE=en_US
 EOF
-ok "plasma-localerc written"
+
+if [ -f "$PLASMA_LOCALE" ] && cmp -s "$plasma_tmp" "$PLASMA_LOCALE"; then
+    skip "plasma-localerc already up to date"
+    rm -f "$plasma_tmp"
+else
+    log "Writing $PLASMA_LOCALE"
+    mv "$plasma_tmp" "$PLASMA_LOCALE"
+    ok "plasma-localerc written"
+fi
 
 # 4. Disable SSH locale forwarding on the server side. This stops incoming
 #    SSH sessions from dragging unwanted locale variables from the client.

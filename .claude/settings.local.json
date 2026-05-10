@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(shellcheck --version)",
+      "Bash(shellcheck *.sh)",
+      "Bash(apt list *)",
+      "Bash(sudo apt-get install -y shellcheck)",
+      "Bash(sudo apt-get update)",
+      "Bash(echo \"exit=$?\")"
+    ]
+  }
+}

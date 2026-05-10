@@ -11,85 +11,22 @@ require_normal_user
 require_sudo
 
 # 1. Configure third-party repositories before the package list is read.
-configure_vscode_repo() {
-    local keyring="/etc/apt/keyrings/packages.microsoft.gpg"
-    local sources="/etc/apt/sources.list.d/vscode.sources"
+#    Suites are hardcoded — update when bumping Debian release.
 
-    if [ -f "$keyring" ] && [ -f "$sources" ]; then
-        skip "VS Code repo already configured"
-        return
-    fi
+configure_apt_repo "vscode" \
+    "https://packages.microsoft.com/keys/microsoft.asc" \
+    "https://packages.microsoft.com/repos/code" \
+    "stable" "main" "amd64 arm64 armhf"
 
-    log "Configuring Microsoft VS Code repository"
+configure_apt_repo "hashicorp" \
+    "https://apt.releases.hashicorp.com/gpg" \
+    "https://apt.releases.hashicorp.com" \
+    "trixie" "main" "amd64 arm64"
 
-    # Make sure prerequisites for adding a signed repo are present.
-    local prereqs=()
-    apt_installed wget || prereqs+=(wget)
-    apt_installed gpg  || prereqs+=(gpg)
-    if [ ${#prereqs[@]} -gt 0 ]; then
-        apt_wait_for_lock
-        sudo apt update
-        apt_wait_for_lock
-        sudo apt install -y "${prereqs[@]}"
-    fi
-
-    sudo install -d -m 0755 /etc/apt/keyrings
-    wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
-        | sudo gpg --dearmor --yes -o "$keyring"
-    sudo chmod 0644 "$keyring"
-
-    # DEB822 format (preferred on Trixie)
-    sudo tee "$sources" > /dev/null <<EOF
-Types: deb
-URIs: https://packages.microsoft.com/repos/code
-Suites: stable
-Components: main
-Architectures: amd64 arm64 armhf
-Signed-By: $keyring
-EOF
-    ok "VS Code repo configured"
-}
-
-configure_hashicorp_repo() {
-    local keyring="/etc/apt/keyrings/hashicorp-archive-keyring.gpg"
-    local sources="/etc/apt/sources.list.d/hashicorp.sources"
-
-    if [ -f "$keyring" ] && [ -f "$sources" ]; then
-        skip "HashiCorp repo already configured"
-        return
-    fi
-
-    log "Configuring HashiCorp apt repository (for terraform)"
-
-    local prereqs=()
-    apt_installed wget || prereqs+=(wget)
-    apt_installed gpg  || prereqs+=(gpg)
-    if [ ${#prereqs[@]} -gt 0 ]; then
-        apt_wait_for_lock
-        sudo apt update
-        apt_wait_for_lock
-        sudo apt install -y "${prereqs[@]}"
-    fi
-
-    sudo install -d -m 0755 /etc/apt/keyrings
-    wget -qO- https://apt.releases.hashicorp.com/gpg \
-        | sudo gpg --dearmor --yes -o "$keyring"
-    sudo chmod 0644 "$keyring"
-
-    # Hardcoded suite — update when upgrading to a new Debian release.
-    sudo tee "$sources" > /dev/null <<EOF
-Types: deb
-URIs: https://apt.releases.hashicorp.com
-Suites: trixie
-Components: main
-Architectures: amd64 arm64
-Signed-By: $keyring
-EOF
-    ok "HashiCorp repo configured"
-}
-
-configure_vscode_repo
-configure_hashicorp_repo
+configure_apt_repo "github-cli" \
+    "https://cli.github.com/packages/githubcli-archive-keyring.gpg" \
+    "https://cli.github.com/packages" \
+    "stable" "main" "amd64 arm64"
 
 apt_wait_for_lock
 log "Updating apt cache"
@@ -144,3 +81,14 @@ log "Installing ${#to_install[@]} packages: ${to_install[*]}"
 apt_wait_for_lock
 sudo apt install -y "${to_install[@]}"
 ok "Package installation complete"
+
+# 3. Pin nc to the OpenBSD variant. Both netcat-openbsd and netcat-traditional
+#    register /bin/nc.openbsd and /bin/nc.traditional under /etc/alternatives/nc.
+#    We want the OpenBSD one (better IPv6, -e flag for pentesting).
+if [ -e /bin/nc.openbsd ] \
+   && command -v update-alternatives > /dev/null 2>&1 \
+   && [ "$(readlink -f /etc/alternatives/nc 2>/dev/null)" != "/bin/nc.openbsd" ]; then
+    log "Pinning nc to OpenBSD variant"
+    sudo update-alternatives --set nc /bin/nc.openbsd
+    ok "nc -> /bin/nc.openbsd"
+fi

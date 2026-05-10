@@ -1,5 +1,6 @@
 # Base packages for all machines.
 # Lines starting with # are comments. Empty lines are ignored.
+# Trailing '# vm-skip' marker excludes a package on hosts where is_vm=yes.
 
 # Shell and dotfiles
 zsh
@@ -14,23 +15,42 @@ vim
 curl
 wget
 jq
+yq
 git
+gh                # GitHub CLI (repo configured by 10-packages.sh)
 btop
 tree
 unzip
 ripgrep
-fd-find        # binary is 'fdfind' on Debian
-bat            # binary is 'batcat' on Debian
+fd-find           # binary is 'fdfind' on Debian
+bat               # binary is 'batcat' on Debian
+less
+man-db
+manpages
+direnv
+httpie
+rsync
+lsof
+strace
+build-essential
+shellcheck
+
+# Clipboard (X11 + Wayland)
+xclip
+wl-clipboard
 
 # Network tools
 # Note: 'nc' from netcat-openbsd is preferred over Trixie's default
 # netcat-traditional (better IPv6 support, -e flag for pentesting).
+# 10-packages.sh pins update-alternatives accordingly.
 nmap
 ncat
 netcat-openbsd
 tcpdump
 whois
 wireshark
+mtr-tiny
+traceroute
 
 # Virtualization (skipped on hosts where is_vm=yes)
 qemu-system-x86         # vm-skip
@@ -73,4 +93,4 @@ yubikey-manager
 libpam-u2f
 pamu2fcfg
 
-# Obsidian and Burp are installed separately (not in Debian repos).
+# Obsidian is installed separately (AppImage, not in Debian repos).

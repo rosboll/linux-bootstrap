@@ -46,6 +46,9 @@ cd ~/linux-bootstrap
 ./run-all.sh
 ```
 
+`run-all.sh` keeps `sudo` warm in the background and tees per-script output
+into `~/linux-bootstrap-logs/`.
+
 ## Reusing an existing SSH key (reinstall)
 
 When reinstalling on a machine where the SSH key already exists on a USB
@@ -77,10 +80,13 @@ cd ~/linux-bootstrap
 ## Hostname detection
 
 `hosts.conf` controls machine-specific decisions. Add new machines there.
-Scripts read `role`, `is_pentest` and `is_vm` from this file.
+Scripts read `role`, `is_pentest` and `is_vm` from this file. The lookup is
+case-insensitive.
+
+The columns are: `hostname role is_pentest is_vm` — that line is *not*
+present in the file itself, only the data rows.
 
 ```
-hostname        role        is_pentest    is_vm
 t14             daily       yes           no
 p52             lab         yes           no
 p15             homelab     no            no
@@ -99,17 +105,39 @@ If the current hostname is not listed, defaults are used (`role=daily`,
 
 Docker is kept on VMs since it is useful inside a Kali VM as well.
 
+## Smoke test (container)
+
+The repo includes a `Containerfile` and a `Makefile` that boots Debian 13 in
+a container, copies the repo in, and runs `run-all.sh` end-to-end with
+`BOOTSTRAP_SMOKE=1` set. That env var makes scripts skip operations that
+need credentials or hardware we don't have inside a container:
+
+- `00-bootstrap.sh` is not invoked at all
+- `30-shell.sh` skips dotfiles clone, stow, and `systemctl --user`
+- `40-services.sh` skips `docker.service` enable
+- `50-yubikey.sh` exits early
+- `60-pentest-tools.sh` does the apt prereqs only — no go/cargo/pipx
+
+```bash
+make lint    # shellcheck (apt install shellcheck)
+make smoke   # full container run; uses podman or docker
+```
+
+`make smoke` exits non-zero on any script failure, which makes it suitable
+for CI. The container hostname is `bootstrap-smoke` and it gets injected
+into `hosts.conf` at image build time as `is_pentest=yes is_vm=yes`.
+
 ## What each script does
 
 | Script              | Description                                                          | Idempotent |
 |---------------------|----------------------------------------------------------------------|------------|
 | 00-bootstrap.sh     | SSH key, clone this repo                                             | Yes        |
-| 10-packages.sh      | Installs apt packages from packages.txt (includes VS Code repo)      | Yes        |
+| 10-packages.sh      | Installs apt packages from packages.txt (VS Code, HashiCorp, gh repos) | Yes      |
 | 20-locale.sh        | sv_SE.UTF-8 locale + KDE plasma-localerc + sshd AcceptEnv            | Yes        |
-| 30-shell.sh         | zsh as default + clone & stow dotfiles + ssh-agent user unit         | Yes        |
+| 30-shell.sh         | zsh as default for $USER and root + clone & stow dotfiles into both + ssh-agent user unit | Yes |
 | 40-services.sh      | docker/libvirt/wireshark groups, libvirt default network             | Yes        |
-| 50-yubikey.sh       | libpam-u2f, PAM config for sudo and SDDM                             | Yes        |
-| 60-pentest-tools.sh | Burp, nuclei, subfinder, httpx, semgrep, RustHound-CE, Obsidian      | Yes        |
+| 50-yubikey.sh       | libpam-u2f, PAM config for sudo and SDDM (with `cue`)                | Yes        |
+| 60-pentest-tools.sh | nuclei, subfinder, httpx, naabu, ffuf, gobuster, kerbrute, mitmproxy, netexec, responder, sqlmap, nikto, hydra, feroxbuster, semgrep, impacket, certipy-ad, RustHound-CE, Obsidian | Yes |
 
 ## Notes on Debian 13 (Trixie) packaging quirks
 
@@ -122,22 +150,38 @@ Docker is kept on VMs since it is useful inside a Kali VM as well.
   in `.zshrc` if you want the upstream names.
 - `dig` and `host` are part of Trixie's standard system utilities task and
   are usually already installed (via `bind9-dnsutils` and `bind9-host`).
-- VS Code (`code`) is not in Debian repos; 10-packages.sh adds the official
-  Microsoft apt repository (DEB822 format) and signing key automatically.
-- Terraform is not in Debian repos; 10-packages.sh adds the official HashiCorp
-  apt repository the same way. The Debian suite (`trixie`) is hardcoded — when
-  upgrading to a new Debian release, update both this and the
-  `configure_hashicorp_repo` function.
+- VS Code (`code`), Terraform, and the GitHub CLI (`gh`) are not in Debian
+  repos. 10-packages.sh adds the upstream apt repositories (DEB822 format)
+  and signing keys via the `configure_apt_repo` helper in `common.sh`.
+- The Debian suite for HashiCorp's repo is hardcoded (`trixie`) — when
+  upgrading to a new Debian release, update both this and the call in
+  `10-packages.sh`.
+- Both `netcat-openbsd` and `netcat-traditional` register an alternative for
+  `/usr/bin/nc`. 10-packages.sh pins it to the OpenBSD variant
+  (`update-alternatives --set nc /bin/nc.openbsd`).
 - RustHound-CE is built from source via `cargo install rusthound-ce` (Debian's
   rust packages can lag behind what it needs). Build dependencies are pulled
   in automatically; the Rust toolchain itself is installed via `rustup` if
-  `cargo` is missing.
+  `~/.cargo/bin/cargo` is missing.
 - Wireshark's debconf question is pre-seeded so non-root users in the
   `wireshark` group can capture packets without using sudo.
 - `localectl set-locale` is blocked by Debian's dbus policy (Debian bug
   #1108144) even as root. 20-locale.sh uses `update-locale` instead, which
   writes to `/etc/default/locale` — Debian's source of truth for the
   system locale.
+
+## Root shares the user's dotfiles
+
+`30-shell.sh` runs `stow` twice: once into `$HOME` and once into `/root`
+(via sudo). Both end up symlinking the same files in `~/dotfiles`, so root
+gets your zsh config "for free." Side-effects to be aware of:
+
+- `/.gitconfig` becomes the user's gitconfig — root commits will carry your
+  name/email. Either keep that (handy for fixing things in `/etc` as root)
+  or scope the dotfiles repo so `.gitconfig` lives in a subpackage you
+  selectively stow.
+- Default Debian `/home` perms (`755`) let root read `/home/$USER/dotfiles`.
+  If you tighten `/home` later, the symlinks break.
 
 ## Manual steps not automated
 
@@ -151,4 +195,6 @@ manual:
 - Configuring Firefox pentest profile with FoxyProxy
 - Downloading the Obsidian AppImage (60-pentest-tools.sh sets up the
   desktop integration once the AppImage is in place)
+- Installing Burp Suite (download from PortSwigger and run their installer;
+  not automated since the licence flow is manual)
 - HP Z40c G3 firmware update on the T14 (if still pending)

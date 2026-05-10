@@ -10,8 +10,8 @@ source "$DIR/common.sh"
 
 require_normal_user
 
-if is_vm_host; then
-    skip "Running on a VM host — skipping YubiKey PAM configuration"
+if is_vm_host || is_smoke_test; then
+    skip "VM / smoke-test host — skipping YubiKey PAM configuration"
     exit 0
 fi
 
@@ -25,10 +25,12 @@ for pkg in libpam-u2f pamu2fcfg yubikey-manager; do
     fi
 done
 
-# 2. Ensure the u2f_keys directory exists
+# 2. Ensure the u2f_keys directory exists with tight perms
 U2F_DIR="$HOME/.config/Yubico"
 U2F_KEYS="$U2F_DIR/u2f_keys"
 mkdir -p "$U2F_DIR"
+chmod 700 "$U2F_DIR"
+[ -f "$U2F_KEYS" ] && chmod 600 "$U2F_KEYS"
 
 # 3. If no keys are registered yet, prompt for the manual step
 if [ ! -s "$U2F_KEYS" ]; then
@@ -52,7 +54,10 @@ fi
 
 # 4. Add pam_u2f.so to sudo and sddm. 'sufficient' means a YubiKey is enough,
 #    while a password still works as fallback. Switch to 'required' if you
-#    want the YubiKey to be mandatory.
+#    want the YubiKey to be mandatory. 'cue' makes pam_u2f print "Please
+#    touch the device" instead of waiting silently.
+PAM_U2F_LINE='auth sufficient pam_u2f.so cue'
+
 add_pam_u2f() {
     local pam_file="$1"
     if [ ! -f "$pam_file" ]; then
@@ -63,9 +68,16 @@ add_pam_u2f() {
         skip "pam_u2f.so already configured in $pam_file"
         return
     fi
+    if ! grep -q '^@include common-auth' "$pam_file"; then
+        err "$pam_file has no '@include common-auth' anchor — refusing to inject pam_u2f blindly"
+        return 1
+    fi
     log "Adding pam_u2f.so to $pam_file"
-    # Insert the line BEFORE @include common-auth
-    sudo sed -i '/^@include common-auth/i auth sufficient pam_u2f.so' "$pam_file"
+    sudo sed -i "/^@include common-auth/i ${PAM_U2F_LINE}" "$pam_file"
+    if ! grep -qF "${PAM_U2F_LINE}" "$pam_file"; then
+        err "sed completed but $pam_file does not contain the pam_u2f line — investigate before re-running"
+        return 1
+    fi
     ok "Added to $pam_file"
 }
 
