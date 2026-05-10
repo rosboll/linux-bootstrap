@@ -175,12 +175,33 @@ add_pam_u2f /etc/pam.d/sudo "$PAM_U2F_TOUCH"
 # string `""` and always returns true — silently skipping pam_u2f even on
 # local sessions.
 PAM_HELPER=/usr/local/bin/pam-skip-if-remote
-# shellcheck disable=SC2016  # $PAM_RHOST is set by pam_exec, not bash
+# Helper that drives the SSH-skip in /etc/pam.d/sudo. Walks the process
+# tree from $PPID (sudo) upward and exits 0 if any ancestor is sshd or
+# sshd-session (openssh PrivSep helper, used by Trixie). Exits 1 if no
+# such ancestor is found within 12 hops.
+#
+# We cannot rely on $PAM_RHOST: sudo creates a fresh PAM context and does
+# not propagate RHOST from the parent (sshd) session on Debian, so the
+# variable is empty even for SSH-invoked sudo.
+#
+# Mapping in /etc/pam.d/sudo:
+#   auth [success=1 default=ignore] pam_exec.so quiet <this script>
+#   auth sufficient                  pam_u2f.so cue
+# Exit 0 -> PAM_SUCCESS -> jump 1 line -> skip pam_u2f (remote)
+# Exit 1 -> PAM_AUTH_ERR -> default=ignore -> run pam_u2f (local)
+# shellcheck disable=SC2016  # $PPID etc. are expanded by /bin/sh, not bash
 PAM_HELPER_BODY='#!/bin/sh
-# Exit 0 (-> PAM_SUCCESS) if running under a remote session, else 1.
-# Used by /etc/pam.d/sudo via:
-#   auth [success=1 default=ignore] pam_exec.so quiet '"$PAM_HELPER"'
-[ -n "$PAM_RHOST" ]
+pid=$PPID
+i=0
+while [ "$i" -lt 12 ] && [ -n "$pid" ] && [ "$pid" != 0 ] && [ "$pid" != 1 ]; do
+    comm=$(cat "/proc/$pid/comm" 2>/dev/null) || break
+    case "$comm" in
+        sshd|sshd-session) exit 0 ;;
+    esac
+    pid=$(awk '"'"'$1=="PPid:"{print $2; exit}'"'"' "/proc/$pid/status" 2>/dev/null)
+    i=$((i + 1))
+done
+exit 1
 '
 
 current_helper=""
