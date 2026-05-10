@@ -167,14 +167,47 @@ add_pam_u2f /etc/pam.d/sudo "$PAM_U2F_TOUCH"
 # isn't reachable from a remote shell, and pam_u2f would otherwise sit there
 # waiting for a touch that will never come. Only sudo needs this; sddm and
 # the lock screen are always local.
-SSH_SKIP_LINE='auth [success=1 default=ignore] pam_succeed_if.so quiet rhost != ""'
+#
+# We do this via pam_exec running a tiny helper script that checks
+# $PAM_RHOST (set by sshd when the session is remote). pam_succeed_if's
+# string comparator was tempting but unusable here: its argument parser
+# doesn't strip quotes, so `rhost != ""` compares to the literal 2-char
+# string `""` and always returns true — silently skipping pam_u2f even on
+# local sessions.
+PAM_HELPER=/usr/local/bin/pam-skip-if-remote
+# shellcheck disable=SC2016  # $PAM_RHOST is set by pam_exec, not bash
+PAM_HELPER_BODY='#!/bin/sh
+# Exit 0 (-> PAM_SUCCESS) if running under a remote session, else 1.
+# Used by /etc/pam.d/sudo via:
+#   auth [success=1 default=ignore] pam_exec.so quiet '"$PAM_HELPER"'
+[ -n "$PAM_RHOST" ]
+'
+
+current_helper=""
+if [ -f "$PAM_HELPER" ]; then
+    current_helper=$(sudo cat "$PAM_HELPER")
+fi
+if [ "$current_helper" != "$PAM_HELPER_BODY" ]; then
+    log "Writing $PAM_HELPER"
+    printf '%s' "$PAM_HELPER_BODY" | sudo tee "$PAM_HELPER" > /dev/null
+    sudo chmod 0755 "$PAM_HELPER"
+fi
+
+# Clean up the legacy (broken) pam_succeed_if guard if it's still in place.
+if grep -q 'pam_succeed_if.so quiet rhost' /etc/pam.d/sudo; then
+    log "Removing legacy SSH-guard (pam_succeed_if rhost) from /etc/pam.d/sudo"
+    sudo sed -i '/pam_succeed_if.so quiet rhost/d' /etc/pam.d/sudo
+fi
+
+# Insert the pam_exec gate ahead of the pam_u2f line.
+PAM_EXEC_GUARD="auth [success=1 default=ignore] pam_exec.so quiet $PAM_HELPER"
 if [ -f /etc/pam.d/sudo ] \
    && grep -q '^auth sufficient pam_u2f.so' /etc/pam.d/sudo \
-   && ! grep -qF 'pam_succeed_if.so quiet rhost' /etc/pam.d/sudo; then
+   && ! grep -qF "pam_exec.so quiet $PAM_HELPER" /etc/pam.d/sudo; then
     log "Adding SSH-session skip for pam_u2f in /etc/pam.d/sudo"
-    sudo sed -i "/^auth sufficient pam_u2f.so/i ${SSH_SKIP_LINE}" /etc/pam.d/sudo
-    if ! grep -qF "$SSH_SKIP_LINE" /etc/pam.d/sudo; then
-        err "Failed to insert SSH-session skip line into /etc/pam.d/sudo"
+    sudo sed -i "/^auth sufficient pam_u2f.so/i ${PAM_EXEC_GUARD}" /etc/pam.d/sudo
+    if ! grep -qF "pam_exec.so quiet $PAM_HELPER" /etc/pam.d/sudo; then
+        err "Failed to insert SSH-session skip into /etc/pam.d/sudo"
         exit 1
     fi
     ok "SSH-session skip added to /etc/pam.d/sudo"
