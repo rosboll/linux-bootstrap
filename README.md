@@ -136,7 +136,7 @@ into `hosts.conf` at image build time as `is_pentest=yes is_vm=yes`.
 | 20-locale.sh        | sv_SE.UTF-8 locale + KDE plasma-localerc + sshd AcceptEnv            | Yes        |
 | 30-shell.sh         | zsh as default for $USER and root + clone & stow dotfiles into both + ssh-agent user unit | Yes |
 | 40-services.sh      | docker/libvirt/wireshark groups, libvirt default network             | Yes        |
-| 50-yubikey.sh       | libpam-u2f, PAM config for sudo and SDDM (with `cue`)                | Yes        |
+| 50-yubikey.sh       | libpam-u2f, PAM config for sudo (touch only), SDDM and KDE lock screen (PIN + touch) | Yes |
 | 60-pentest-tools.sh | nuclei, subfinder, httpx, naabu, ffuf, gobuster, kerbrute, mitmproxy, netexec, responder, sqlmap, nikto, hydra, feroxbuster, semgrep, impacket, certipy-ad, RustHound-CE, Obsidian. Source of each tool: apt / pipx / go install / cargo install / git clone — see the script. | Yes |
 
 ## Notes on Debian 13 (Trixie) packaging quirks

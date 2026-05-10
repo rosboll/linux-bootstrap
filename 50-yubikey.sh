@@ -52,37 +52,104 @@ if [ ! -s "$U2F_KEYS" ]; then
     exit 1
 fi
 
-# 4. Add pam_u2f.so to sudo and sddm. 'sufficient' means a YubiKey is enough,
-#    while a password still works as fallback. Switch to 'required' if you
-#    want the YubiKey to be mandatory. 'cue' makes pam_u2f print "Please
-#    touch the device" instead of waiting silently.
-PAM_U2F_LINE='auth sufficient pam_u2f.so cue'
+# 4. Add pam_u2f.so to the relevant PAM stacks.
+#
+#    'sufficient' means a YubiKey is enough; password still works as fallback.
+#    Two friction levels:
+#
+#    - sudo:           cue                       (just touch — already proved
+#                                                 identity to log in)
+#    - sddm / kde:     cue + pinverification=1   (PIN + touch — physical
+#                                                 access is the threat at the
+#                                                 login/lock screen)
+#
+#    'cue' prints "Please touch the device" instead of waiting silently.
+#    'pinverification=1' requires the FIDO2 PIN you set with
+#    'ykman fido access change-pin' — make sure all three keys have a PIN
+#    set or the high-friction stacks will refuse them.
+PAM_U2F_TOUCH='auth sufficient pam_u2f.so cue'
+PAM_U2F_PIN_TOUCH='auth sufficient pam_u2f.so cue pinverification=1'
 
-add_pam_u2f() {
-    local pam_file="$1"
-    if [ ! -f "$pam_file" ]; then
-        skip "$pam_file does not exist — skipping"
-        return
+# /etc/pam.d/kde isn't shipped as a config file by Debian's KDE packages; the
+# canonical version lives at /usr/lib/pam.d/kde and is read directly unless a
+# local override exists. Copy it into /etc/pam.d so our edits survive package
+# updates and so kscreenlocker actually picks them up.
+ensure_kde_pam_file() {
+    if [ -f /etc/pam.d/kde ]; then
+        return 0
     fi
-    if grep -q "pam_u2f.so" "$pam_file"; then
-        skip "pam_u2f.so already configured in $pam_file"
-        return
-    fi
-    if ! grep -q '^@include common-auth' "$pam_file"; then
-        err "$pam_file has no '@include common-auth' anchor — refusing to inject pam_u2f blindly"
+    if [ ! -f /usr/lib/pam.d/kde ]; then
+        warn "/usr/lib/pam.d/kde not found — kscreenlocker may not be installed; skipping kde PAM"
         return 1
     fi
+    log "Copying /usr/lib/pam.d/kde -> /etc/pam.d/kde (local override)"
+    sudo cp /usr/lib/pam.d/kde /etc/pam.d/kde
+}
+
+# Insert (or update) a pam_u2f.so line in a PAM file. Idempotent across
+# changes to the pam_u2f options: if a pam_u2f line is already there but
+# differs from the target, we replace it in place rather than skipping —
+# otherwise the script can't roll out new flags like pinverification=1.
+add_pam_u2f() {
+    local pam_file="$1"
+    local pam_line="$2"
+
+    if [ ! -f "$pam_file" ]; then
+        skip "$pam_file does not exist — skipping"
+        return 0
+    fi
+
+    if grep -qF "$pam_line" "$pam_file"; then
+        skip "pam_u2f.so already configured correctly in $pam_file"
+        return 0
+    fi
+
+    if grep -q "pam_u2f.so" "$pam_file"; then
+        log "Updating pam_u2f line in $pam_file"
+        # Replace the (single) existing pam_u2f line with the new one. The
+        # target line contains no sed metacharacters in our usage, but use
+        # a delimiter unlikely to clash and escape & for safety.
+        local replacement; replacement=${pam_line//&/\\&}
+        sudo sed -i "s|^.*pam_u2f.so.*|${replacement}|" "$pam_file"
+        if ! grep -qF "$pam_line" "$pam_file"; then
+            err "Failed to update pam_u2f line in $pam_file"
+            return 1
+        fi
+        ok "Updated $pam_file"
+        return 0
+    fi
+
+    # First-time insertion: anchor before the common-auth include. Debian
+    # uses '@include common-auth' for sudo/sddm; KDE's stock kde file uses
+    # 'auth include common-auth' (no @). Match either.
+    local anchor_re
+    if grep -qE '^@include[[:space:]]+common-auth' "$pam_file"; then
+        anchor_re='^@include[[:space:]]+common-auth'
+    elif grep -qE '^auth[[:space:]]+include[[:space:]]+common-auth' "$pam_file"; then
+        anchor_re='^auth[[:space:]]+include[[:space:]]+common-auth'
+    else
+        err "$pam_file has no common-auth anchor — refusing to inject pam_u2f blindly"
+        return 1
+    fi
+
     log "Adding pam_u2f.so to $pam_file"
-    sudo sed -i "/^@include common-auth/i ${PAM_U2F_LINE}" "$pam_file"
-    if ! grep -qF "${PAM_U2F_LINE}" "$pam_file"; then
+    sudo sed -i -E "/${anchor_re}/i ${pam_line}" "$pam_file"
+    if ! grep -qF "$pam_line" "$pam_file"; then
         err "sed completed but $pam_file does not contain the pam_u2f line — investigate before re-running"
         return 1
     fi
     ok "Added to $pam_file"
 }
 
-add_pam_u2f /etc/pam.d/sudo
-add_pam_u2f /etc/pam.d/sddm
+add_pam_u2f /etc/pam.d/sudo "$PAM_U2F_TOUCH"
+add_pam_u2f /etc/pam.d/sddm "$PAM_U2F_PIN_TOUCH"
 
-warn "Test sudo in a NEW terminal before logging out, in case PAM is broken."
+# KDE lock screen (kscreenlocker_greet) — needs a local override seeded first.
+if ensure_kde_pam_file; then
+    add_pam_u2f /etc/pam.d/kde "$PAM_U2F_PIN_TOUCH"
+fi
+
+warn "Test sudo in a NEW terminal AND lock the screen with Ctrl+Alt+L before"
+warn "logging out — if PAM is broken you want to find out while you still"
+warn "have a working session."
 ok "YubiKey PAM configuration complete"
