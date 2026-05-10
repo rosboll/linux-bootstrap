@@ -137,7 +137,7 @@ into `hosts.conf` at image build time as `is_pentest=yes is_vm=yes`.
 | 30-shell.sh         | zsh as default for $USER and root + clone & stow dotfiles into both + ssh-agent user unit | Yes |
 | 40-services.sh      | docker/libvirt/wireshark groups, libvirt default network             | Yes        |
 | 50-yubikey.sh       | libpam-u2f, PAM config for sudo and SDDM (with `cue`)                | Yes        |
-| 60-pentest-tools.sh | nuclei, subfinder, httpx, naabu, ffuf, gobuster, kerbrute, mitmproxy, netexec, responder, sqlmap, nikto, hydra, feroxbuster, semgrep, impacket, certipy-ad, RustHound-CE, Obsidian | Yes |
+| 60-pentest-tools.sh | nuclei, subfinder, httpx, naabu, ffuf, gobuster, kerbrute, mitmproxy, netexec, responder, sqlmap, nikto, hydra, feroxbuster, semgrep, impacket, certipy-ad, RustHound-CE, Obsidian. Source of each tool: apt / pipx / go install / cargo install / git clone — see the script. | Yes |
 
 ## Notes on Debian 13 (Trixie) packaging quirks
 
@@ -159,10 +159,15 @@ into `hosts.conf` at image build time as `is_pentest=yes is_vm=yes`.
 - Both `netcat-openbsd` and `netcat-traditional` register an alternative for
   `/usr/bin/nc`. 10-packages.sh pins it to the OpenBSD variant
   (`update-alternatives --set nc /bin/nc.openbsd`).
-- RustHound-CE is built from source via `cargo install rusthound-ce` (Debian's
-  rust packages can lag behind what it needs). Build dependencies are pulled
-  in automatically; the Rust toolchain itself is installed via `rustup` if
-  `~/.cargo/bin/cargo` is missing.
+- RustHound-CE and feroxbuster are built from source via `cargo install`
+  (Debian's `rust*` packages lag, and `feroxbuster` isn't packaged at all).
+  Build dependencies are pulled in automatically; the Rust toolchain itself
+  is installed via `rustup` if `~/.cargo/bin/cargo` is missing.
+- `nikto` is in Debian only via the `non-free` component. Rather than enable
+  non-free for one tool, 60-pentest-tools.sh clones nikto from upstream into
+  `~/.local/opt/nikto` and symlinks `~/.local/bin/nikto` to its perl
+  entrypoint. Its perl runtime deps (libwww-perl, libnet-ssleay-perl,
+  libio-socket-ssl-perl, libauthen-ntlm-perl) are installed via apt.
 - Wireshark's debconf question is pre-seeded so non-root users in the
   `wireshark` group can capture packets without using sudo.
 - `localectl set-locale` is blocked by Debian's dbus policy (Debian bug

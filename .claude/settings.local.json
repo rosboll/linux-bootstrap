@@ -6,7 +6,8 @@
       "Bash(apt list *)",
       "Bash(sudo apt-get install -y shellcheck)",
       "Bash(sudo apt-get update)",
-      "Bash(echo \"exit=$?\")"
+      "Bash(echo \"exit=$?\")",
+      "WebFetch(domain:packages.debian.org)"
     ]
   }
 }
