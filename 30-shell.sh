@@ -59,14 +59,20 @@ else
     ok "zsh set for root"
 fi
 
-# 3. Clone dotfiles if missing. Skipped in smoke-test mode — the container
+# 3. Clone or update dotfiles. Skipped in smoke-test mode — the container
 #    has no SSH access to GitHub.
 if is_smoke_test; then
     skip "Smoke test mode — skipping dotfiles clone and stow"
 elif [ -d "$DOTFILES_DIR/.git" ]; then
-    skip "Dotfiles already cloned: $DOTFILES_DIR"
+    log "Updating dotfiles in $DOTFILES_DIR"
+    if (cd "$DOTFILES_DIR" && git pull --ff-only); then
+        ok "Dotfiles up to date"
+    else
+        warn "git pull --ff-only in $DOTFILES_DIR did not succeed (local changes? diverged?) — continuing with current checkout"
+    fi
 else
     log "Cloning dotfiles to $DOTFILES_DIR"
+    mkdir -p "$(dirname "$DOTFILES_DIR")"
     git clone "$DOTFILES_REPO" "$DOTFILES_DIR"
     ok "Dotfiles cloned"
 fi
