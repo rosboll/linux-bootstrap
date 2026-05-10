@@ -52,6 +52,26 @@ if [ ! -s "$U2F_KEYS" ]; then
     exit 1
 fi
 
+# Validate the username column. pam_u2f looks up credentials by the user it
+# is authenticating; if the line doesn't start with '<user>:' the lookup
+# silently fails and PAM falls through to the password prompt with no clue
+# why. This usually happens when pamu2fcfg was called with -n for the FIRST
+# key (the -n flag is for SUBSEQUENT keys only).
+u2f_first_field=$(awk -F: 'NR==1 {print $1}' "$U2F_KEYS")
+if [ -z "$u2f_first_field" ]; then
+    err "$U2F_KEYS starts with ':' — username column is empty."
+    err "This happens when pamu2fcfg -n was used for the first key. Fix:"
+    err "    sed -i.bak 's/^:/$USER:/' $U2F_KEYS"
+    exit 1
+fi
+if [ "$u2f_first_field" != "$USER" ]; then
+    err "$U2F_KEYS first column is '$u2f_first_field', expected '$USER'."
+    err "pam_u2f matches by the authenticating user, so this won't work for sudo/sddm."
+    err "Either re-register or rewrite the username:"
+    err "    sed -i.bak 's/^${u2f_first_field}:/$USER:/' $U2F_KEYS"
+    exit 1
+fi
+
 # 4. Add pam_u2f.so to the relevant PAM stacks.
 #
 #    'sufficient' means a YubiKey is enough; password still works as fallback.
@@ -142,6 +162,24 @@ add_pam_u2f() {
 }
 
 add_pam_u2f /etc/pam.d/sudo "$PAM_U2F_TOUCH"
+
+# Skip pam_u2f for sudo when invoked from an SSH session — the local YubiKey
+# isn't reachable from a remote shell, and pam_u2f would otherwise sit there
+# waiting for a touch that will never come. Only sudo needs this; sddm and
+# the lock screen are always local.
+SSH_SKIP_LINE='auth [success=1 default=ignore] pam_succeed_if.so quiet rhost != ""'
+if [ -f /etc/pam.d/sudo ] \
+   && grep -q '^auth sufficient pam_u2f.so' /etc/pam.d/sudo \
+   && ! grep -qF 'pam_succeed_if.so quiet rhost' /etc/pam.d/sudo; then
+    log "Adding SSH-session skip for pam_u2f in /etc/pam.d/sudo"
+    sudo sed -i "/^auth sufficient pam_u2f.so/i ${SSH_SKIP_LINE}" /etc/pam.d/sudo
+    if ! grep -qF "$SSH_SKIP_LINE" /etc/pam.d/sudo; then
+        err "Failed to insert SSH-session skip line into /etc/pam.d/sudo"
+        exit 1
+    fi
+    ok "SSH-session skip added to /etc/pam.d/sudo"
+fi
+
 add_pam_u2f /etc/pam.d/sddm "$PAM_U2F_PIN_TOUCH"
 
 # KDE lock screen (kscreenlocker_greet) — needs a local override seeded first.
