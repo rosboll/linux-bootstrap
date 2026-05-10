@@ -161,7 +161,7 @@ into `hosts.conf` at image build time as `is_pentest=yes is_vm=yes`.
 | 00-bootstrap.sh     | SSH key, clone this repo                                             | Yes        |
 | 10-packages.sh      | Installs apt packages from packages.txt (VS Code, HashiCorp, gh repos) | Yes      |
 | 20-locale.sh        | sv_SE.UTF-8 locale + KDE plasma-localerc + sshd AcceptEnv            | Yes        |
-| 30-shell.sh         | zsh as default for $USER and root + clone & stow dotfiles into both + ssh-agent user unit | Yes |
+| 30-shell.sh         | zsh as default for $USER and root + clone & stow dotfiles into both + ssh-agent user unit + mask gcr-ssh-agent | Yes |
 | 40-services.sh      | docker/libvirt/wireshark groups, libvirt default network             | Yes        |
 | 50-yubikey.sh       | libpam-u2f, PAM config for sudo (touch only), SDDM and KDE lock screen (PIN + touch) | Yes |
 | 60-pentest-tools.sh | nuclei, subfinder, httpx, naabu, ffuf, gobuster, kerbrute, mitmproxy, netexec, responder, sqlmap, nikto, hydra, feroxbuster, semgrep, impacket, certipy-ad, RustHound-CE, Obsidian. Source of each tool: apt / pipx / go install / cargo install / git clone — see the script. | Yes |
@@ -201,6 +201,19 @@ into `hosts.conf` at image build time as `is_pentest=yes is_vm=yes`.
   #1108144) even as root. 20-locale.sh uses `update-locale` instead, which
   writes to `/etc/default/locale` — Debian's source of truth for the
   system locale.
+
+## Dotfiles checkout location
+
+`30-shell.sh` resolves the dotfiles directory in this order:
+
+1. `$DOTFILES_DIR` env var, if set: `DOTFILES_DIR=~/somewhere/else ./30-shell.sh`.
+2. A sibling of this repo: `$(dirname linux-bootstrap)/dotfiles`. This means
+   if you keep `~/repos/linux-bootstrap`, the script will use
+   `~/repos/dotfiles` automatically.
+3. `$HOME/dotfiles` — the simple "everything in $HOME" layout.
+
+The first existing `.git/` checkout wins. If none exist, the script clones
+into the sibling location.
 
 ## Root shares the user's dotfiles
 

@@ -9,7 +9,14 @@
       "Bash(echo \"exit=$?\")",
       "WebFetch(domain:packages.debian.org)",
       "Bash(bash -n 50-yubikey.sh)",
-      "Bash(bash -n 30-shell.sh)"
+      "Bash(bash -n 30-shell.sh)",
+      "Bash(awk '/existing target is \\(not owned by stow|neither a link nor a directory\\)/ { print $NF }')",
+      "Bash(sudo apt-get install -y stow)",
+      "Read(//tmp/test-dotfiles/**)",
+      "Bash(stow -n --target=/tmp/test-home .)",
+      "Bash(bash /tmp/test-resolve.sh)",
+      "Bash(bash -x /tmp/test-resolve.sh)",
+      "Bash(git --no-pager diff --stat)"
     ]
   }
 }
