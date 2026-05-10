@@ -77,6 +77,33 @@ cd ~/linux-bootstrap
 ./run-all.sh
 ```
 
+**Passphrase-protected keys**: if the key on the USB stick has a passphrase
+(typically yes), `git pull` and other ssh-using commands will *appear to
+hang* after each reboot until the passphrase is loaded into the user
+ssh-agent. The agent is started by 30-shell.sh as a systemd user unit, but
+nothing loads keys into it automatically. Either:
+
+```bash
+# Manual, once per login session:
+ssh-add ~/.ssh/id_ed25519
+```
+
+…or have your dotfiles do it for you in `~/.zlogin`:
+
+```zsh
+if [[ -o interactive ]] && [[ -z "${SSH_CONNECTION:-}" ]] \
+   && [[ -f "$HOME/.ssh/id_ed25519" ]]; then
+    ssh-add -l &>/dev/null
+    case $? in
+        1) ssh-add "$HOME/.ssh/id_ed25519" ;;
+        2) print -u2 "ssh-agent not reachable (SSH_AUTH_SOCK=$SSH_AUTH_SOCK)" ;;
+    esac
+fi
+```
+
+If `ssh -vvv git@github.com` ends with `Enter passphrase for key …` and
+hangs, this is what you're hitting.
+
 ## Hostname detection
 
 `hosts.conf` controls machine-specific decisions. Add new machines there.

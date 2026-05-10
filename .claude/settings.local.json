@@ -8,7 +8,8 @@
       "Bash(sudo apt-get update)",
       "Bash(echo \"exit=$?\")",
       "WebFetch(domain:packages.debian.org)",
-      "Bash(bash -n 50-yubikey.sh)"
+      "Bash(bash -n 50-yubikey.sh)",
+      "Bash(bash -n 30-shell.sh)"
     ]
   }
 }

@@ -139,4 +139,30 @@ else
     echo '    export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"'
 fi
 
+# 6. Mask gcr-ssh-agent. Trixie's KDE pulls in gcr 4.x, which ships its own
+#    SSH agent as a standalone systemd user service (gcr-ssh-agent.socket).
+#    When user systemd activates that socket it also publishes SSH_AUTH_SOCK
+#    into the systemd user environment — every graphical-session-launched
+#    Konsole then inherits that socket instead of ours. Worse, the gcr agent
+#    has no working secret-service backend on a KDE-only box, so `ssh-add`
+#    accepts the passphrase and then hangs indefinitely.
+#
+#    Mask both the .socket and .service so they cannot auto-activate on the
+#    next login. Stop them in the current session for good measure.
+if is_smoke_test; then
+    skip "Smoke test mode — skipping gcr-ssh-agent masking"
+elif systemctl --user cat gcr-ssh-agent.socket > /dev/null 2>&1; then
+    enabled_state=$(systemctl --user is-enabled gcr-ssh-agent.socket 2>/dev/null || true)
+    if [ "$enabled_state" = "masked" ]; then
+        skip "gcr-ssh-agent.socket already masked"
+    else
+        log "Masking gcr-ssh-agent (conflicts with our ssh-agent user unit)"
+        systemctl --user mask gcr-ssh-agent.socket gcr-ssh-agent.service
+        systemctl --user stop gcr-ssh-agent.socket gcr-ssh-agent.service 2>/dev/null || true
+        ok "gcr-ssh-agent masked and stopped"
+    fi
+else
+    skip "gcr-ssh-agent not installed — nothing to mask"
+fi
+
 ok "Shell configuration complete"
