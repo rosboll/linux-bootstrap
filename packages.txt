@@ -1,6 +1,6 @@
 # Base packages for all machines.
 # Lines starting with # are comments. Empty lines are ignored.
-# Trailing '# vm-skip' marker excludes a package on hosts where is_vm=yes.
+# Trailing inline comments are stripped before installation.
 
 # Shell and dotfiles
 zsh
@@ -20,7 +20,9 @@ git
 gh                # GitHub CLI (repo configured by 10-packages.sh)
 btop
 tree
+ncal
 unzip
+xxd
 ripgrep
 fd-find           # binary is 'fdfind' on Debian
 bat               # binary is 'batcat' on Debian
@@ -46,20 +48,23 @@ wl-clipboard
 nmap
 ncat
 netcat-openbsd
+openvpn
+resolvconf
 tcpdump
 whois
 wireshark
 mtr-tiny
 traceroute
 
-# Virtualization (skipped on hosts where is_vm=yes)
-qemu-system-x86         # vm-skip
-qemu-utils              # vm-skip
-libvirt-daemon-system   # vm-skip
-libvirt-clients         # vm-skip
-virt-manager            # vm-skip
-virt-viewer             # vm-skip
-bridge-utils            # vm-skip
+# Virtualization
+qemu-system-x86
+qemu-utils
+guestfs-tools
+libvirt-daemon-system
+libvirt-clients
+virt-manager
+virt-viewer
+bridge-utils
 
 # Containers
 # Note: docker-compose (Python v1) was removed from Trixie. docker.io provides
@@ -74,6 +79,7 @@ terraform
 
 # Remote desktop
 rdesktop
+remmina
 
 # Notes / passwords
 keepassxc

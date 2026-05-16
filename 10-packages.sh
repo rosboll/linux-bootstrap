@@ -38,29 +38,8 @@ sudo apt update
 echo "wireshark-common wireshark-common/install-setuid boolean true" \
     | sudo debconf-set-selections
 
-# 2. Read packages. Lines marked '# vm-skip' are skipped on hosts where
-#    is_vm=yes. Strip trailing comments only after that filter.
-skip_vm_packages=0
-if is_vm_host; then
-    skip_vm_packages=1
-    log "Running on a VM host — skipping packages marked 'vm-skip'"
-fi
-
-mapfile -t packages < <(
-    while IFS= read -r line; do
-        # Drop full-line comments and blank lines
-        case "$line" in
-            ''|\#*) continue ;;
-        esac
-        # Drop vm-skip lines when on a VM
-        if [ "$skip_vm_packages" -eq 1 ] && [[ "$line" == *"# vm-skip"* ]]; then
-            continue
-        fi
-        # Strip trailing comments
-        printf '%s\n' "$line" | sed -E 's/[[:space:]]*#.*$//'
-    done < "$DIR/packages.txt" \
-    | grep -v '^[[:space:]]*$'
-)
+# 2. Read packages. Strip trailing comments and blank lines.
+mapfile -t packages < <(sed -E 's/[[:space:]]*#.*//; /^[[:space:]]*$/d' "$DIR/packages.txt")
 
 # Filter out already-installed packages
 to_install=()

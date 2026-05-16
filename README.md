@@ -40,10 +40,11 @@ cd ~/linux-bootstrap
 ./30-shell.sh           # also clones rosboll/dotfiles and stows it
 ./40-services.sh
 ./50-yubikey.sh
-./60-pentest-tools.sh   # only if hosts.conf marks the machine as pentest
+./60-pentest-tools.sh   # optional; run directly if you want pentest tools
 
 # Or everything in one go (after 00-bootstrap):
-./run-all.sh
+./run-all.sh            # base setup only
+./run-all.sh --pentest  # base setup + pentest tools
 ```
 
 `run-all.sh` keeps `sudo` warm in the background and tees per-script output
@@ -104,40 +105,12 @@ fi
 If `ssh -vvv git@github.com` ends with `Enter passphrase for key …` and
 hangs, this is what you're hitting.
 
-## Hostname detection
-
-`hosts.conf` controls machine-specific decisions. Add new machines there.
-Scripts read `role`, `is_pentest` and `is_vm` from this file. The lookup is
-case-insensitive.
-
-The columns are: `hostname role is_pentest is_vm` — that line is *not*
-present in the file itself, only the data rows.
-
-```
-t14             daily       yes           no
-p52             lab         yes           no
-p15             homelab     no            no
-ColorJet4250    daily       yes           no
-kaliv           lab         yes           yes
-```
-
-If the current hostname is not listed, defaults are used (`role=daily`,
-`is_pentest=no`, `is_vm=no`).
-
-`is_vm=yes` skips:
-
-- Virtualization packages (qemu, libvirt, virt-manager, ...) in 10-packages.sh
-- libvirt/kvm group membership and the libvirt default network in 40-services.sh
-- The entire 50-yubikey.sh (no physical YubiKey is plugged into a VM)
-
-Docker is kept on VMs since it is useful inside a Kali VM as well.
-
 ## Smoke test (container)
 
 The repo includes a `Containerfile` and a `Makefile` that boots Debian 13 in
-a container, copies the repo in, and runs `run-all.sh` end-to-end with
-`BOOTSTRAP_SMOKE=1` set. That env var makes scripts skip operations that
-need credentials or hardware we don't have inside a container:
+a container, copies the repo in, and runs `BOOTSTRAP_SMOKE=1 ./run-all.sh
+--pentest`. That env var makes scripts skip operations that need credentials
+or hardware we don't have inside a container:
 
 - `00-bootstrap.sh` is not invoked at all
 - `30-shell.sh` skips dotfiles clone, stow, and `systemctl --user`
@@ -151,8 +124,7 @@ make smoke   # full container run; uses podman or docker
 ```
 
 `make smoke` exits non-zero on any script failure, which makes it suitable
-for CI. The container hostname is `bootstrap-smoke` and it gets injected
-into `hosts.conf` at image build time as `is_pentest=yes is_vm=yes`.
+for CI.
 
 ## What each script does
 
@@ -162,7 +134,7 @@ into `hosts.conf` at image build time as `is_pentest=yes is_vm=yes`.
 | 10-packages.sh      | Installs apt packages from packages.txt (VS Code, HashiCorp, gh repos) | Yes      |
 | 20-locale.sh        | sv_SE.UTF-8 locale + KDE plasma-localerc + sshd AcceptEnv            | Yes        |
 | 30-shell.sh         | zsh as default for $USER and root + clone & stow dotfiles into both + ssh-agent user unit + mask gcr-ssh-agent | Yes |
-| 40-services.sh      | docker/libvirt/wireshark groups, libvirt default network             | Yes        |
+| 40-services.sh      | docker/libvirt/kvm/wireshark groups, libvirt default network         | Yes        |
 | 50-yubikey.sh       | libpam-u2f, PAM config for sudo (touch only), SDDM and KDE lock screen (PIN + touch) | Yes |
 | 60-pentest-tools.sh | nuclei, subfinder, httpx, naabu, ffuf, gobuster, kerbrute, mitmproxy, netexec, responder, sqlmap, nikto, hydra, feroxbuster, semgrep, impacket, certipy-ad, RustHound-CE, Obsidian. Source of each tool: apt / pipx / go install / cargo install / git clone — see the script. | Yes |
 
@@ -242,4 +214,3 @@ manual:
   desktop integration once the AppImage is in place)
 - Installing Burp Suite (download from PortSwigger and run their installer;
   not automated since the licence flow is manual)
-- HP Z40c G3 firmware update on the T14 (if still pending)

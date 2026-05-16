@@ -9,6 +9,14 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
 source "$DIR/common.sh"
 
+pentest=0
+for arg in "$@"; do
+    case "$arg" in
+        --pentest) pentest=1 ;;
+        *) err "Unknown argument: $arg"; echo "Usage: $0 [--pentest]" >&2; exit 1 ;;
+    esac
+done
+
 require_normal_user
 require_sudo
 
@@ -27,6 +35,11 @@ log "Logs: $LOG_DIR"
 
 for script in "$DIR"/[1-9][0-9]-*.sh; do
     name=$(basename "$script")
+    # Scripts in the 60+ range are pentest-only; skip unless --pentest was given.
+    if [[ "$name" == 6*.sh ]] && [[ "$pentest" -eq 0 ]]; then
+        skip "$name — skipped (pass --pentest to include)"
+        continue
+    fi
     log_file="$LOG_DIR/${name%.sh}-$(date +%Y%m%d-%H%M%S).log"
     echo
     echo "=========================================================================="

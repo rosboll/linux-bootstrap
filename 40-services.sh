@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # 40-services.sh — Adds $USER to docker, libvirt and kvm groups; activates
-# libvirt's default network; ensures docker.service is enabled. Virtualization
-# steps are skipped on hosts marked is_vm=yes in hosts.conf.
+# libvirt's default network; ensures docker.service is enabled.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
@@ -10,15 +9,7 @@ source "$DIR/common.sh"
 require_normal_user
 require_sudo
 
-# Decide which groups to consider. docker and wireshark are always relevant;
-# libvirt and kvm are skipped on VM hosts (where the packages are not
-# installed anyway).
-groups_to_check=(docker wireshark)
-if is_vm_host; then
-    skip "Running on a VM host — skipping libvirt/kvm groups and network"
-else
-    groups_to_check+=(libvirt kvm)
-fi
+groups_to_check=(docker wireshark libvirt kvm)
 
 # 1. Groups
 for group in "${groups_to_check[@]}"; do
@@ -35,10 +26,10 @@ for group in "${groups_to_check[@]}"; do
     fi
 done
 
-# 2. Activate libvirt default network — only on non-VM hosts. The 'default'
-#    network is created by libvirt-daemon-system on install; gate everything
-#    on its existence so a half-installed system doesn't trip set -e.
-if ! is_vm_host && command -v virsh > /dev/null 2>&1; then
+# 2. Activate libvirt default network. The 'default' network is created by
+#    libvirt-daemon-system on install; gate on its existence so a
+#    half-installed system doesn't trip set -e.
+if command -v virsh > /dev/null 2>&1; then
     if sudo virsh net-list --all --name 2>/dev/null | grep -qx default; then
         if sudo virsh net-info default 2>/dev/null | grep -qE "Active:[[:space:]]*yes"; then
             skip "libvirt default network already active"

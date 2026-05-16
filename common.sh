@@ -43,50 +43,6 @@ require_sudo() {
     fi
 }
 
-# Look up fields in hosts.conf. Hostname matching is case-insensitive.
-# Usage: lookup_host_field <field>  where field is "role", "is_pentest" or "is_vm"
-lookup_host_field() {
-    local field="$1"
-    local hostname
-    hostname=$(hostname | tr '[:upper:]' '[:lower:]')
-    local conf
-    conf="$(dirname "${BASH_SOURCE[0]}")/hosts.conf"
-
-    local line=""
-    if [ -f "$conf" ]; then
-        line=$(awk -v h="$hostname" '
-            /^[[:space:]]*#/ { next }
-            /^[[:space:]]*$/ { next }
-            { name = tolower($1); if (name == h) { print; exit } }
-        ' "$conf")
-    fi
-
-    if [ -z "$line" ]; then
-        case "$field" in
-            role)       echo "daily" ;;
-            is_pentest) echo "no" ;;
-            is_vm)      echo "no" ;;
-            *)          echo "" ;;
-        esac
-        return
-    fi
-
-    case "$field" in
-        role)       echo "$line" | awk '{print $2}' ;;
-        is_pentest) echo "$line" | awk '{print $3}' ;;
-        is_vm)      echo "$line" | awk '{print $4}' ;;
-        *)          echo "" ;;
-    esac
-}
-
-is_pentest_host() {
-    [ "$(lookup_host_field is_pentest)" = "yes" ]
-}
-
-is_vm_host() {
-    [ "$(lookup_host_field is_vm)" = "yes" ]
-}
-
 # Smoke-test mode skips operations that need network credentials we don't
 # have inside a container (cloning private repos, talking to GitHub via SSH,
 # touching real hardware). The Containerfile sets BOOTSTRAP_SMOKE=1.

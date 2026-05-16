@@ -2,7 +2,6 @@
 # 50-yubikey.sh — Configures PAM so a YubiKey can be used for sudo and SDDM.
 # Key registration (pamu2fcfg) is inherently manual and must be done with each
 # physical key plugged in — this script pauses to let you do it.
-# Skipped on hosts marked is_vm=yes (no physical YubiKey is plugged into a VM).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
@@ -10,8 +9,8 @@ source "$DIR/common.sh"
 
 require_normal_user
 
-if is_vm_host || is_smoke_test; then
-    skip "VM / smoke-test host — skipping YubiKey PAM configuration"
+if is_smoke_test; then
+    skip "Smoke test mode — skipping YubiKey PAM configuration"
     exit 0
 fi
 

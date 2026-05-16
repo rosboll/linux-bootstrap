@@ -32,7 +32,7 @@ smoke-build:
 smoke: smoke-build
 	$(CONTAINER_RUNTIME) run --rm -e BOOTSTRAP_SMOKE=1 \
 	    --hostname bootstrap-smoke \
-	    $(IMAGE) bash -lc './run-all.sh'
+	    $(IMAGE) bash -lc './run-all.sh --pentest'
 
 smoke-shell: smoke-build
 	$(CONTAINER_RUNTIME) run --rm -it -e BOOTSTRAP_SMOKE=1 \
