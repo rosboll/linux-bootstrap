@@ -61,20 +61,54 @@ fi
 
 # 3. Clone or update dotfiles. Skipped in smoke-test mode — the container
 #    has no SSH access to GitHub.
+#
+# Verify SSH to GitHub works non-interactively before touching git.
+# If the user's key is passphrase-protected and not loaded into the agent,
+# git pull/clone would otherwise prompt on /dev/tty — which `run-all.sh`
+# pipes through tee, hiding the prompt and making the script appear to
+# hang. BatchMode=yes disables prompts so we fail fast with a clear hint.
+# ssh -T returns 1 on success (no shell granted), so grep the output for
+# the canonical success string instead of relying on exit code.
+verify_github_ssh_noninteractive() {
+    local out
+    out=$(ssh -o BatchMode=yes -o ConnectTimeout=10 \
+            -o StrictHostKeyChecking=accept-new \
+            -T git@github.com 2>&1 || true)
+    if printf '%s\n' "$out" | grep -q "successfully authenticated"; then
+        return 0
+    fi
+    err "SSH to GitHub is not working non-interactively."
+    err "git pull/clone below would hang on a hidden passphrase prompt."
+    err ""
+    err "Most common cause — passphrase-protected key not in ssh-agent:"
+    err "    ssh-add ~/.ssh/id_ed25519"
+    err ""
+    err "Other causes to check:"
+    err "  - Key not on your GitHub account (https://github.com/settings/keys)"
+    err "  - github.com:22 blocked by network (try: ssh -T -p 443 git@ssh.github.com)"
+    err ""
+    err "Raw ssh output:"
+    printf '%s\n' "$out" | sed 's/^/    /' >&2
+    return 1
+}
+
 if is_smoke_test; then
     skip "Smoke test mode — skipping dotfiles clone and stow"
-elif [ -d "$DOTFILES_DIR/.git" ]; then
-    log "Updating dotfiles in $DOTFILES_DIR"
-    if (cd "$DOTFILES_DIR" && git pull --ff-only); then
-        ok "Dotfiles up to date"
-    else
-        warn "git pull --ff-only in $DOTFILES_DIR did not succeed (local changes? diverged?) — continuing with current checkout"
-    fi
 else
-    log "Cloning dotfiles to $DOTFILES_DIR"
-    mkdir -p "$(dirname "$DOTFILES_DIR")"
-    git clone "$DOTFILES_REPO" "$DOTFILES_DIR"
-    ok "Dotfiles cloned"
+    verify_github_ssh_noninteractive || exit 1
+    if [ -d "$DOTFILES_DIR/.git" ]; then
+        log "Updating dotfiles in $DOTFILES_DIR"
+        if (cd "$DOTFILES_DIR" && git pull --ff-only); then
+            ok "Dotfiles up to date"
+        else
+            warn "git pull --ff-only in $DOTFILES_DIR did not succeed (local changes? diverged?) — continuing with current checkout"
+        fi
+    else
+        log "Cloning dotfiles to $DOTFILES_DIR"
+        mkdir -p "$(dirname "$DOTFILES_DIR")"
+        git clone "$DOTFILES_REPO" "$DOTFILES_DIR"
+        ok "Dotfiles cloned"
+    fi
 fi
 
 # 4. Stow dotfiles. The dotfiles repo uses a FLAT layout: every target file

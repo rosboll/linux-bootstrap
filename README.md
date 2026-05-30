@@ -89,7 +89,8 @@ nothing loads keys into it automatically. Either:
 ssh-add ~/.ssh/id_ed25519
 ```
 
-…or have your dotfiles do it for you in `~/.zlogin`:
+…or have your dotfiles do it for you in `~/.zshrc` (we use `.zshrc` rather
+than `.zlogin` because KDE Konsole tabs aren't login shells):
 
 ```zsh
 if [[ -o interactive ]] && [[ -z "${SSH_CONNECTION:-}" ]] \
@@ -103,7 +104,10 @@ fi
 ```
 
 If `ssh -vvv git@github.com` ends with `Enter passphrase for key …` and
-hangs, this is what you're hitting.
+hangs, this is what you're hitting. To make a hung run easier to diagnose,
+`30-shell.sh` now does a `ssh -o BatchMode=yes` probe before any git
+operation and exits with a clear hint instead of silently hanging behind
+`tee`.
 
 ## Smoke test (container)
 
