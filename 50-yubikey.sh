@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 50-yubikey.sh — Configures PAM so a YubiKey can be used for sudo and SDDM.
+# 50-yubikey.sh — Configures PAM so a YubiKey can be used for sudo.
 # Key registration (pamu2fcfg) is inherently manual and must be done with each
 # physical key plugged in — this script pauses to let you do it.
 set -euo pipefail
@@ -71,39 +71,11 @@ if [ "$u2f_first_field" != "$USER" ]; then
     exit 1
 fi
 
-# 4. Add pam_u2f.so to the relevant PAM stacks.
+# 4. Add pam_u2f.so to sudo.
 #
-#    'sufficient' means a YubiKey is enough; password still works as fallback.
-#    Two friction levels:
-#
-#    - sudo:           cue                       (just touch — already proved
-#                                                 identity to log in)
-#    - sddm / kde:     cue + pinverification=1   (PIN + touch — physical
-#                                                 access is the threat at the
-#                                                 login/lock screen)
-#
+#    'sufficient' means a YubiKey touch is enough; password still works as fallback.
 #    'cue' prints "Please touch the device" instead of waiting silently.
-#    'pinverification=1' requires the FIDO2 PIN you set with
-#    'ykman fido access change-pin' — make sure all three keys have a PIN
-#    set or the high-friction stacks will refuse them.
 PAM_U2F_TOUCH='auth sufficient pam_u2f.so cue'
-PAM_U2F_PIN_TOUCH='auth sufficient pam_u2f.so cue pinverification=1'
-
-# /etc/pam.d/kde isn't shipped as a config file by Debian's KDE packages; the
-# canonical version lives at /usr/lib/pam.d/kde and is read directly unless a
-# local override exists. Copy it into /etc/pam.d so our edits survive package
-# updates and so kscreenlocker actually picks them up.
-ensure_kde_pam_file() {
-    if [ -f /etc/pam.d/kde ]; then
-        return 0
-    fi
-    if [ ! -f /usr/lib/pam.d/kde ]; then
-        warn "/usr/lib/pam.d/kde not found — kscreenlocker may not be installed; skipping kde PAM"
-        return 1
-    fi
-    log "Copying /usr/lib/pam.d/kde -> /etc/pam.d/kde (local override)"
-    sudo cp /usr/lib/pam.d/kde /etc/pam.d/kde
-}
 
 # Insert (or update) a pam_u2f.so line in a PAM file. Idempotent across
 # changes to the pam_u2f options: if a pam_u2f line is already there but
@@ -233,14 +205,22 @@ if [ -f /etc/pam.d/sudo ] \
     ok "SSH-session skip added to /etc/pam.d/sudo"
 fi
 
-add_pam_u2f /etc/pam.d/sddm "$PAM_U2F_PIN_TOUCH"
+# Remove pam_u2f from SDDM and KDE — YubiKey is not used for login/lock.
+# This is a cleanup step so re-running undoes any previously applied config.
+remove_pam_u2f() {
+    local pam_file="$1"
+    if [ -f "$pam_file" ] && grep -q "pam_u2f.so" "$pam_file"; then
+        log "Removing pam_u2f.so from $pam_file"
+        sudo sed -i '/pam_u2f.so/d' "$pam_file"
+        ok "Removed pam_u2f from $pam_file"
+    else
+        skip "pam_u2f.so not present in $pam_file — nothing to remove"
+    fi
+}
 
-# KDE lock screen (kscreenlocker_greet) — needs a local override seeded first.
-if ensure_kde_pam_file; then
-    add_pam_u2f /etc/pam.d/kde "$PAM_U2F_PIN_TOUCH"
-fi
+remove_pam_u2f /etc/pam.d/sddm
+remove_pam_u2f /etc/pam.d/kde
 
-warn "Test sudo in a NEW terminal AND lock the screen with Ctrl+Alt+L before"
-warn "logging out — if PAM is broken you want to find out while you still"
-warn "have a working session."
+warn "Test sudo in a NEW terminal before logging out — if PAM is broken"
+warn "you want to find out while you still have a working session."
 ok "YubiKey PAM configuration complete"
