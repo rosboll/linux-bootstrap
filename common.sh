@@ -157,3 +157,31 @@ tailscale_active() {
 dns_works() {
     getent hosts github.com > /dev/null 2>&1
 }
+
+# Bootstrap profile — "desktop" (default) or "server". Selected by run-all.sh
+# via BOOTSTRAP_PROFILE=server (set by --server). Every script that behaves
+# differently between the two consults this. Anything unset or unrecognised
+# falls back to "desktop" so the pre-profile behaviour is preserved.
+bootstrap_profile() {
+    case "${BOOTSTRAP_PROFILE:-desktop}" in
+        server)  echo server ;;
+        *)       echo desktop ;;
+    esac
+}
+is_desktop() { [ "$(bootstrap_profile)" = "desktop" ]; }
+is_server()  { [ "$(bootstrap_profile)" = "server" ]; }
+
+# OS detection — /etc/os-release is the single source of truth on all
+# systemd distros. We keep it read-only; nothing here writes to it.
+os_id() {
+    ( . /etc/os-release 2>/dev/null && printf '%s' "${ID:-}" )
+}
+is_debian() { [ "$(os_id)" = "debian" ]; }
+is_ubuntu() { [ "$(os_id)" = "ubuntu" ]; }
+
+# Distribution codename (e.g. trixie, noble, jammy). Used to pick the
+# right suite for third-party apt repos that publish per-release
+# (HashiCorp, Microsoft VS Code stable is 'stable' so unaffected).
+os_codename() {
+    ( . /etc/os-release 2>/dev/null && printf '%s' "${VERSION_CODENAME:-}" )
+}

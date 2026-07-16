@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# 00-bootstrap.sh — Generates an SSH key, asks you to add it to GitHub, and
-# clones the linux-bootstrap repo. This is the only script that lives outside
-# the repo from the start — it is meant to be run directly from a GitHub raw
-# URL on a fresh machine.
+# 00-bootstrap.sh — Bootstraps the repo onto a fresh machine.
+#
+#   (default)  Desktop: generates an SSH key, asks you to add it to GitHub,
+#              clones the repo via SSH.
+#   --server   Server:  skips SSH key setup, clones via HTTPS anonymously.
+#              Suits headless boxes where you don't want a GitHub-linked key
+#              (proxmox guests, cloud VMs, etc.).
+#
+# This is the only script that lives outside the repo from the start — it's
+# meant to be run directly from a GitHub raw URL on a fresh machine.
 set -euo pipefail
 
-BOOTSTRAP_REPO="git@github.com:rosboll/linux-bootstrap.git"
+REPO_SSH="git@github.com:rosboll/linux-bootstrap.git"
+REPO_HTTPS="https://github.com/rosboll/linux-bootstrap.git"
 BOOTSTRAP_DIR="$HOME/linux-bootstrap"
 SSH_KEY="$HOME/.ssh/id_ed25519"
 
@@ -26,6 +33,43 @@ if [ "$(id -u)" -eq 0 ]; then
     err "Do not run as root. Run as your normal user."
     exit 1
 fi
+
+profile=desktop
+for arg in "$@"; do
+    case "$arg" in
+        --server)  profile=server ;;
+        --desktop) profile=desktop ;;
+        *) err "Unknown argument: $arg"
+           echo "Usage: $0 [--server|--desktop]" >&2
+           exit 1 ;;
+    esac
+done
+
+if [ "$profile" = "server" ]; then
+    log "Server profile: cloning $REPO_HTTPS anonymously (no GitHub SSH key needed)"
+
+    if ! command -v git > /dev/null 2>&1; then
+        err "git is not installed. Install it first:"
+        err "    sudo apt update && sudo apt install -y git curl"
+        exit 1
+    fi
+
+    if [ -d "$BOOTSTRAP_DIR/.git" ]; then
+        ok "linux-bootstrap already cloned: $BOOTSTRAP_DIR"
+    else
+        log "Cloning linux-bootstrap to $BOOTSTRAP_DIR"
+        git clone "$REPO_HTTPS" "$BOOTSTRAP_DIR"
+        ok "linux-bootstrap cloned"
+    fi
+
+    echo
+    ok "Bootstrap done. Continue with:"
+    echo "  cd $BOOTSTRAP_DIR"
+    echo "  ./run-all.sh --server"
+    exit 0
+fi
+
+# Desktop profile: generate SSH key, add to GitHub, clone via SSH.
 
 # 1. SSH key
 if [ -f "$SSH_KEY" ]; then
@@ -68,7 +112,7 @@ if [ -d "$BOOTSTRAP_DIR/.git" ]; then
     ok "linux-bootstrap already cloned: $BOOTSTRAP_DIR"
 else
     log "Cloning linux-bootstrap to $BOOTSTRAP_DIR"
-    git clone "$BOOTSTRAP_REPO" "$BOOTSTRAP_DIR"
+    git clone "$REPO_SSH" "$BOOTSTRAP_DIR"
     ok "linux-bootstrap cloned"
 fi
 

@@ -76,13 +76,14 @@ sudo update-locale \
     LC_NAME=sv_SE.UTF-8 \
     LC_IDENTIFICATION=sv_SE.UTF-8
 
-# 3. KDE plasma-localerc — use sv_SE.UTF-8 as format source. Only write when
-#    the file is missing or differs, so KDE Settings UI tweaks aren't clobbered
-#    on every run.
-PLASMA_LOCALE="$HOME/.config/plasma-localerc"
-mkdir -p "$(dirname "$PLASMA_LOCALE")"
-plasma_tmp=$(mktemp)
-cat > "$plasma_tmp" <<'EOF'
+# 3. KDE plasma-localerc — desktop-only. Server profile has no Plasma to
+#    read this file, so skip. Only write when the file is missing or differs,
+#    so KDE Settings UI tweaks aren't clobbered on every run.
+if is_desktop; then
+    PLASMA_LOCALE="$HOME/.config/plasma-localerc"
+    mkdir -p "$(dirname "$PLASMA_LOCALE")"
+    plasma_tmp=$(mktemp)
+    cat > "$plasma_tmp" <<'EOF'
 [Formats]
 LANG=en_GB.UTF-8
 LC_TIME=sv_SE.UTF-8
@@ -95,13 +96,16 @@ LC_PAPER=sv_SE.UTF-8
 LANGUAGE=en_GB
 EOF
 
-if [ -f "$PLASMA_LOCALE" ] && cmp -s "$plasma_tmp" "$PLASMA_LOCALE"; then
-    skip "plasma-localerc already up to date"
-    rm -f "$plasma_tmp"
+    if [ -f "$PLASMA_LOCALE" ] && cmp -s "$plasma_tmp" "$PLASMA_LOCALE"; then
+        skip "plasma-localerc already up to date"
+        rm -f "$plasma_tmp"
+    else
+        log "Writing $PLASMA_LOCALE"
+        mv "$plasma_tmp" "$PLASMA_LOCALE"
+        ok "plasma-localerc written"
+    fi
 else
-    log "Writing $PLASMA_LOCALE"
-    mv "$plasma_tmp" "$PLASMA_LOCALE"
-    ok "plasma-localerc written"
+    skip "Server profile — no plasma-localerc"
 fi
 
 # 4. Disable SSH locale forwarding on the server side. This stops incoming

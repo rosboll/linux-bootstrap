@@ -10,7 +10,15 @@ source "$DIR/common.sh"
 require_normal_user
 require_sudo
 
-DOTFILES_REPO="git@github.com:rosboll/dotfiles.git"
+# Dotfiles repo URL. Desktop uses SSH so subsequent `git push` from the
+# workstation works with the user's key. Server profile clones anonymously
+# over HTTPS — no GitHub-linked key on servers by design; the checkout
+# is read-only (git pull works, git push doesn't without a token).
+if is_server; then
+    DOTFILES_REPO="https://github.com/rosboll/dotfiles.git"
+else
+    DOTFILES_REPO="git@github.com:rosboll/dotfiles.git"
+fi
 
 # Resolve the dotfiles checkout location. Precedence:
 #   1. $DOTFILES_DIR env var (explicit override)
@@ -95,7 +103,12 @@ verify_github_ssh_noninteractive() {
 if is_smoke_test; then
     skip "Smoke test mode — skipping dotfiles clone and stow"
 else
-    verify_github_ssh_noninteractive || exit 1
+    # HTTPS clone (server profile) doesn't need ssh-agent — skip the
+    # GitHub SSH precheck. Desktop profile still guards against passphrase
+    # prompts silently hanging behind tee.
+    if is_desktop; then
+        verify_github_ssh_noninteractive || exit 1
+    fi
     if [ -d "$DOTFILES_DIR/.git" ]; then
         log "Updating dotfiles in $DOTFILES_DIR"
         if (cd "$DOTFILES_DIR" && git pull --ff-only); then

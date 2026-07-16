@@ -1,0 +1,18 @@
+# Server-only packages — installed on top of base.txt when profile=server.
+
+# Automatic security patching. 80-unattended-upgrades.sh configures the
+# policy (security only, no auto-reboot).
+unattended-upgrades
+needrestart      # Ubuntu ships this default-on; harmless on Debian.
+
+# Disk / IO investigation
+ncdu             # Interactive du replacement — quick "what's eating the disk"
+iotop
+
+# Reboot safety net when SSH'd in. Intercepts reboot/halt/shutdown and
+# prompts for the hostname before proceeding — avoids the classic
+# "meant to reboot laptop, actually rebooted prod" mistake.
+molly-guard
+
+# Packet capture without the GUI (workstation profile installs wireshark).
+tshark

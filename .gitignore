@@ -1,1 +1,19 @@
+# Local Claude Code settings (kept per-worktree, not shared)
 .claude/
+
+# Stow conflict backups — 30-shell.sh moves pre-existing dotfiles
+# to ~/original-<name> before symlinking. Occasionally end up here if
+# someone runs the scripts from inside the repo working tree.
+original-*
+
+# Per-script log directory — run-all.sh writes to $HOME/linux-bootstrap-logs
+# by default, but shows up here if a user invokes it with a relative path.
+linux-bootstrap-logs/
+
+# Editor / OS crud
+*.swp
+*.swo
+*.bak
+*.orig
+.DS_Store
+Thumbs.db

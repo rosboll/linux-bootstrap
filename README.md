@@ -1,10 +1,31 @@
 # linux-bootstrap
 
-Numbered, idempotent scripts for setting up a fresh Debian 13 (Trixie) +
-KDE machine the same way every time. Scripts are safe to re-run.
+> **Personal setup, published as-is.** This repo bootstraps *my*
+> Debian/Ubuntu machines. It hardcodes Swedish locale (`sv_SE.UTF-8`),
+> `Europe/Stockholm` timezone, `rosboll/dotfiles` as the dotfiles source,
+> and an opinionated package selection. If you're not me, fork it and
+> adjust before running. **Read every script before executing** — these
+> touch PAM, sshd, and package management as root. Licensed MIT (see
+> [LICENSE](LICENSE)), no warranty.
+
+Numbered, idempotent scripts for setting up either:
+
+- a fresh Debian 13 (Trixie) + KDE **workstation** (the default profile), or
+- a Debian 13 / Ubuntu LTS **server** (`--server` profile) — no DE, no
+  YubiKey, adds SSH lockdown, unattended security upgrades, and timezone.
+
+Scripts are safe to re-run.
 
 The repo only contains setup scripts. Dotfiles live in a separate repo
-(`rosboll/dotfiles`) and are cloned and stowed by `30-shell.sh`.
+(`rosboll/dotfiles`) and are cloned and stowed by `30-shell.sh`. If you
+fork this, either publish your own dotfiles at a public URL or override
+`DOTFILES_DIR` to point at a pre-existing checkout.
+
+> **On running `bash <(curl ...)`**: the two bootstrap one-liners below
+> pipe a script from GitHub straight into bash. That's a large trust
+> ask — inspect [`00-bootstrap.sh`](00-bootstrap.sh) before running it,
+> or `curl` it to disk first and read it. Same goes for every other
+> script in this repo.
 
 ## Prerequisites
 
@@ -26,9 +47,11 @@ exit
 
 ## Usage
 
+### Desktop (workstation)
+
 ```bash
 # 1. Bootstrap (generates SSH key, asks you to add it to GitHub,
-#    clones this repo)
+#    clones this repo via SSH)
 bash <(curl -sSL https://raw.githubusercontent.com/rosboll/linux-bootstrap/main/00-bootstrap.sh)
 
 # That clones the repo to ~/linux-bootstrap. Run the rest from there:
@@ -43,9 +66,31 @@ cd ~/linux-bootstrap
 ./60-pentest-tools.sh   # optional; run directly if you want pentest tools
 
 # Or everything in one go (after 00-bootstrap):
-./run-all.sh            # base setup only
-./run-all.sh --pentest  # base setup + pentest tools
+./run-all.sh                        # desktop base (default)
+./run-all.sh --pentest              # desktop + pentest tools
 ```
+
+### Server (Debian 13 or Ubuntu LTS)
+
+Servers clone **anonymously via HTTPS** — no SSH key needs to be tied
+to GitHub. Two equally valid paths:
+
+```bash
+# One-liner via 00-bootstrap.sh with --server:
+bash <(curl -sSL https://raw.githubusercontent.com/rosboll/linux-bootstrap/main/00-bootstrap.sh) --server
+cd ~/linux-bootstrap
+./run-all.sh --server               # + --pentest for e.g. OCI pentest VM
+
+# Or clone directly and skip 00-bootstrap.sh entirely:
+git clone https://github.com/rosboll/linux-bootstrap.git ~/linux-bootstrap
+cd ~/linux-bootstrap
+./run-all.sh --server
+```
+
+The dotfiles repo (`rosboll/dotfiles`) is also cloned over HTTPS on the
+server profile. See the [Server profile](#server-profile) section for
+what runs vs. skips, the SSH lockdown precheck, and unattended-upgrades
+policy.
 
 `run-all.sh` keeps `sudo` warm in the background and tees per-script output
 into `~/linux-bootstrap-logs/`.
@@ -132,15 +177,73 @@ for CI.
 
 ## What each script does
 
-| Script              | Description                                                          | Idempotent |
-|---------------------|----------------------------------------------------------------------|------------|
-| 00-bootstrap.sh     | SSH key, clone this repo                                             | Yes        |
-| 10-packages.sh      | Installs apt packages from packages.txt (VS Code, HashiCorp, gh repos) | Yes      |
-| 20-locale.sh        | sv_SE.UTF-8 locale + KDE plasma-localerc + sshd AcceptEnv            | Yes        |
-| 30-shell.sh         | zsh as default for $USER and root + clone & stow dotfiles into both + ssh-agent user unit + mask gcr-ssh-agent | Yes |
-| 40-services.sh      | docker/libvirt/kvm/wireshark groups, libvirt default network         | Yes        |
-| 50-yubikey.sh       | libpam-u2f, PAM config for sudo (touch only), SDDM and KDE lock screen (PIN + touch) | Yes |
-| 60-pentest-tools.sh | nuclei, subfinder, httpx, naabu, ffuf, gobuster, kerbrute, mitmproxy, netexec, responder, sqlmap, nikto, hydra, feroxbuster, semgrep, impacket, certipy-ad, RustHound-CE, Obsidian. Source of each tool: apt / pipx / go install / cargo install / git clone — see the script. | Yes |
+| Script                     | Profile        | Description                                                                                | Idempotent |
+|----------------------------|----------------|--------------------------------------------------------------------------------------------|------------|
+| 00-bootstrap.sh            | both           | SSH key, clone this repo                                                                   | Yes        |
+| 10-packages.sh             | both           | apt packages from `packages/base.txt` + `packages/{desktop,server}.txt`; configures VS Code / HashiCorp / gh repos (HashiCorp suite from `/etc/os-release`) | Yes |
+| 20-locale.sh               | both           | sv_SE.UTF-8 locale + sshd AcceptEnv + `TIME_STYLE=long-iso`. KDE `plasma-localerc` only on desktop | Yes |
+| 30-shell.sh                | both           | zsh as default for $USER and root + clone & stow dotfiles into both + ssh-agent user unit + mask gcr-ssh-agent | Yes |
+| 40-services.sh             | both           | docker group. libvirt/kvm/wireshark groups + libvirt default network only on desktop       | Yes        |
+| 50-yubikey.sh              | desktop        | libpam-u2f, PAM config for sudo (touch only, skipped over SSH via pam_exec helper)         | Yes        |
+| 60-pentest-tools.sh        | opt-in         | nuclei, subfinder, httpx, naabu, ffuf, gobuster, kerbrute, mitmproxy, netexec, responder, sqlmap, nikto, hydra, feroxbuster, semgrep, impacket, certipy-ad, RustHound-CE, Obsidian. Source of each tool: apt / pipx / go install / cargo install / git clone — see the script. | Yes |
+| 70-ssh-hardening.sh        | server         | Drop-in `sshd_config.d/99-bootstrap-hardening.conf`: PasswordAuthentication no, PermitRootLogin prohibit-password, MaxAuthTries 4, LoginGraceTime 30. Refuses to run if `$USER` has no `authorized_keys` (would lock you out). `sshd -t` before reload. | Yes |
+| 80-unattended-upgrades.sh  | server         | Enables `unattended-upgrades` for **all** origins (security + main + `-updates`), no auto-reboot. Ensures `apt-daily.timer` + `apt-daily-upgrade.timer` + `unattended-upgrades.service` are enabled. Config in `apt.conf.d/99-bootstrap-unattended.conf`. | Yes |
+| 85-timezone.sh             | server         | `timedatectl set-timezone Europe/Stockholm`                                                | Yes        |
+
+## Server profile
+
+`--server` swaps the KDE-desktop assumptions out for a headless server
+posture. Runs on Debian 13 and Ubuntu LTS (24.04 / 22.04). Tested on
+Proxmox guests and OCI ARM VMs.
+
+**What runs**: `10-packages.sh` (with `packages/base.txt` +
+`packages/server.txt`), `20-locale.sh` (no plasma-localerc),
+`30-shell.sh`, `40-services.sh` (docker group only), then
+`70-ssh-hardening.sh`, `80-unattended-upgrades.sh`, `85-timezone.sh`.
+
+**What doesn't**: `50-yubikey.sh` (no PAM u2f), the KDE plasma-localerc
+block in `20-locale.sh`, and libvirt/kvm/wireshark groups in
+`40-services.sh`.
+
+**Server package overlay** (`packages/server.txt`): `unattended-upgrades`,
+`needrestart`, `ncdu`, `iotop`, `molly-guard`, `tshark`. Everything else
+comes from `packages/base.txt`.
+
+**SSH lockdown precheck**: `70-ssh-hardening.sh` refuses to write
+`PasswordAuthentication no` unless `$USER` has at least one entry in
+`~/.ssh/authorized_keys`. Do this before running:
+
+```bash
+# From the machine's local/serial/hypervisor console is safest —
+# no risk of dropping the very SSH session you're hardening.
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+printf 'ssh-ed25519 AAAA... comment\n' >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+**Ubuntu quirks handled**:
+- `HashiCorp` apt-repo suite is picked dynamically from
+  `/etc/os-release` (`trixie` / `noble` / `jammy`), not hardcoded.
+- `needrestart` is flipped to `$nrconf{restart} = 'a'` so `apt install`
+  runs don't hang on the interactive service-restart prompt.
+- `snap`, `netplan`, and other Ubuntu-only stack are left alone.
+
+**Unattended-upgrades policy** (`80-unattended-upgrades.sh`):
+- **Everything except -proposed and -backports**: security + main
+  archive point releases + `-updates`. Both Debian and Ubuntu covered by
+  a single Origins-Pattern using `${distro_id}` / `${distro_codename}`.
+- **No automatic reboot** — kernel/libc bumps wait for a human. Check
+  needed-restarts with `needrestart -r a` or schedule a reboot via
+  Ansible.
+- No mail; use `journalctl -u unattended-upgrades.service` to review.
+- Config lives in `/etc/apt/apt.conf.d/99-bootstrap-unattended.conf`
+  (drop-in; the stock `50unattended-upgrades` stays pristine).
+
+**Not automated** (by design — belongs in Ansible if you run it):
+- Host firewall (nftables/ufw) — the perimeter is your UCG Max / OCI
+  security list. A host firewall on top risks breaking VCN ingress rules.
+- fail2ban — with `PasswordAuthentication no`, brute force is a non-issue.
+- Monitoring agents, log shippers, backup client, app config.
 
 ## Notes on Debian 13 (Trixie) packaging quirks
 

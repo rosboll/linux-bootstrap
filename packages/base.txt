@@ -1,4 +1,4 @@
-# Base packages for all machines.
+# Base packages — installed on every profile (desktop and server).
 # Lines starting with # are comments. Empty lines are ignored.
 # Trailing inline comments are stripped before installation.
 
@@ -37,66 +37,25 @@ strace
 build-essential
 shellcheck
 
-# Clipboard (X11 + Wayland)
-xclip
-wl-clipboard
-
-# Network tools
+# Network CLI (no GUI)
 # Note: 'nc' from netcat-openbsd is preferred over Trixie's default
 # netcat-traditional (better IPv6 support, -e flag for pentesting).
 # 10-packages.sh pins update-alternatives accordingly.
 nmap
 ncat
 netcat-openbsd
-openvpn
-resolvconf
 tcpdump
 whois
-wireshark
 mtr-tiny
 traceroute
 
-# Virtualization
-qemu-system-x86
-qemu-utils
-guestfs-tools
-libvirt-daemon-system
-libvirt-clients
-virt-manager
-virt-viewer
-bridge-utils
-
-# Containers
+# Containers — useful on both workstation and server profile.
 # Note: docker-compose (Python v1) was removed from Trixie. docker.io provides
 # 'docker compose' (subcommand) via the integrated compose plugin.
 docker.io
 
-# Infrastructure tools
-# Note: terraform is not in Debian repos. The HashiCorp apt repository is
-# configured by 10-packages.sh before this list is processed.
+# Configuration management (ansible client is handy on both)
 ansible
-terraform
 
-# Remote desktop
-rdesktop
-remmina
-
-# Notes / passwords
-keepassxc
-
-# Browser
-firefox-esr
-
-# Editor
-# Note: VS Code is not in Debian repos. The Microsoft apt repository is
-# configured by 10-packages.sh before this list is processed.
-code
-
-# YubiKey and GPG
+# GPG (base — YubiKey-specific packages live in desktop.txt)
 gnupg
-scdaemon
-yubikey-manager
-libpam-u2f
-pamu2fcfg
-
-# Obsidian is installed separately (AppImage, not in Debian repos).

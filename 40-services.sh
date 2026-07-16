@@ -9,7 +9,12 @@ source "$DIR/common.sh"
 require_normal_user
 require_sudo
 
-groups_to_check=(docker wireshark libvirt kvm)
+# Docker is on both profiles; the rest (wireshark, libvirt, kvm) are desktop-only
+# because the underlying packages aren't installed on the server profile.
+groups_to_check=(docker)
+if is_desktop; then
+    groups_to_check+=(wireshark libvirt kvm)
+fi
 
 # 1. Groups
 for group in "${groups_to_check[@]}"; do
@@ -26,10 +31,12 @@ for group in "${groups_to_check[@]}"; do
     fi
 done
 
-# 2. Activate libvirt default network. The 'default' network is created by
-#    libvirt-daemon-system on install; gate on its existence so a
-#    half-installed system doesn't trip set -e.
-if command -v virsh > /dev/null 2>&1; then
+# 2. Activate libvirt default network. Desktop-only — servers use their
+#    hypervisor's networking (Proxmox bridges, OCI VCN, etc.) instead of
+#    libvirt's NAT. The 'default' network is created by libvirt-daemon-system
+#    on install; gate on its existence so a half-installed system doesn't
+#    trip set -e.
+if is_desktop && command -v virsh > /dev/null 2>&1; then
     if sudo virsh net-list --all --name 2>/dev/null | grep -qx default; then
         if sudo virsh net-info default 2>/dev/null | grep -qE "Active:[[:space:]]*yes"; then
             skip "libvirt default network already active"

@@ -1,0 +1,54 @@
+# Desktop-only packages — installed on top of base.txt when profile=desktop.
+
+# Clipboard (X11 + Wayland — irrelevant on headless server)
+xclip
+wl-clipboard
+
+# GUI packet capture (server profile uses tshark from server.txt instead)
+wireshark
+
+# VPN client + resolvconf integration for DNS push.
+# Note: On hosts running Tailscale, adding resolvconf can flip Tailscale
+# into resolvconf-mode DNS management and break external DNS if the
+# tailnet has no global nameservers. 10-packages.sh warns before install.
+openvpn
+resolvconf
+
+# Virtualization (workstation runs guests via libvirt/QEMU;
+# servers use their hypervisor's own stack — Proxmox/OCI/etc.)
+qemu-system-x86
+qemu-utils
+guestfs-tools
+libvirt-daemon-system
+libvirt-clients
+virt-manager
+virt-viewer
+bridge-utils
+
+# Infrastructure tooling used from the workstation (writing plans locally).
+# Note: terraform is not in Debian repos. The HashiCorp apt repository is
+# configured by 10-packages.sh before this list is processed.
+terraform
+
+# Remote desktop
+rdesktop
+remmina
+
+# Notes / passwords
+keepassxc
+
+# Browser
+firefox-esr
+
+# Editor
+# Note: VS Code is not in Debian repos. The Microsoft apt repository is
+# configured by 10-packages.sh before this list is processed.
+code
+
+# YubiKey and smartcard stack
+scdaemon
+yubikey-manager
+libpam-u2f
+pamu2fcfg
+
+# Obsidian is installed separately (AppImage, not in Debian repos).
