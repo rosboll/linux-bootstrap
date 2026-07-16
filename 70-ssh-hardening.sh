@@ -4,11 +4,17 @@
 #   PermitRootLogin prohibit-password
 #   KbdInteractive off, MaxAuthTries 4, LoginGraceTime 30
 #
-# Written as a drop-in at /etc/ssh/sshd_config.d/99-bootstrap-hardening.conf
+# Written as a drop-in at /etc/ssh/sshd_config.d/01-bootstrap-hardening.conf
 # so the main /etc/ssh/sshd_config stays pristine and package upgrades won't
 # clobber our changes. Debian's stock sshd_config has 'Include
 # /etc/ssh/sshd_config.d/*.conf' at the top; sshd uses first-value-wins
 # semantics so our drop-in overrides the main file's later defaults.
+#
+# CRITICAL: filename must sort BEFORE any other drop-in that sets the
+# same keywords. Ubuntu cloud images (OCI, AWS, GCP) ship
+# `50-cloud-init.conf` with `PasswordAuthentication yes` — a
+# later-alphabetical name would lose to it and the hardening would
+# silently no-op. The `01-` prefix beats the 50-/60-cloudimg files.
 #
 # Refuses to run if $USER has no authorized_keys — flipping
 # PasswordAuthentication=no in that state locks you out.
@@ -65,13 +71,25 @@ if [ "$user_keys" -lt 1 ]; then
 fi
 ok "$user_keys key(s) present in $USER's authorized_keys — precheck OK"
 
-# 3. Write the drop-in. Only touch disk when content differs so re-runs
+# 3. Clean up the legacy 99-* file from earlier runs of this script.
+#    Previous versions used a 99- prefix which loses to Ubuntu cloud
+#    images' 50-cloud-init.conf under sshd's first-wins semantics.
+LEGACY_HARDENING=/etc/ssh/sshd_config.d/99-bootstrap-hardening.conf
+if sudo test -f "$LEGACY_HARDENING"; then
+    log "Removing legacy $LEGACY_HARDENING (replaced by 01-* prefix)"
+    sudo rm -f "$LEGACY_HARDENING"
+fi
+
+# 4. Write the drop-in. Only touch disk when content differs so re-runs
 #    stay silent under [=].
-HARDENING_FILE=/etc/ssh/sshd_config.d/99-bootstrap-hardening.conf
+HARDENING_FILE=/etc/ssh/sshd_config.d/01-bootstrap-hardening.conf
 HARDENING_BODY='# Written by linux-bootstrap 70-ssh-hardening.sh
 # Server-profile SSH lockdown. Do not edit; will be overwritten on next run.
-# Anything else you want to change lives in /etc/ssh/sshd_config or another
-# drop-in with a lower-priority filename.
+# 01- prefix is intentional: sshd_config.d/*.conf uses first-value-wins,
+# and Ubuntu cloud images ship 50-cloud-init.conf setting the opposite of
+# what we want. Anything else you want to change goes in the main
+# /etc/ssh/sshd_config or another drop-in — just make sure its filename
+# sorts LATER than this one if it might set the same keywords.
 PasswordAuthentication no
 PermitRootLogin prohibit-password
 ChallengeResponseAuthentication no
@@ -93,7 +111,7 @@ log "Writing $HARDENING_FILE"
 printf '%s' "$HARDENING_BODY" | sudo tee "$HARDENING_FILE" > /dev/null
 sudo chmod 0644 "$HARDENING_FILE"
 
-# 4. Validate before reload. sshd -t exits non-zero on any config parse
+# 5. Validate before reload. sshd -t exits non-zero on any config parse
 #    error. If we ship a broken drop-in and reload anyway, sshd may fail
 #    to start on next boot — remove the file if it doesn't parse.
 if ! sudo sshd -t; then
@@ -102,7 +120,7 @@ if ! sudo sshd -t; then
     exit 1
 fi
 
-# 5. Reload (not restart) so the current session stays up. Debian's unit
+# 6. Reload (not restart) so the current session stays up. Debian's unit
 #    name is 'ssh'; some distros use 'sshd'. Try both.
 log "Reloading sshd"
 if sudo systemctl reload ssh 2>/dev/null; then

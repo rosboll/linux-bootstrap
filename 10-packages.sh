@@ -63,8 +63,27 @@ fi
 
 # needrestart on Ubuntu prompts interactively during upgrades to restart
 # services — that breaks unattended apt runs. Flip it to non-interactive
-# ('a' = automatically restart). Debian ships needrestart too but does not
-# prompt during apt by default; safe no-op if the config file exists.
+# ('a' = automatically restart).
+#
+# Two-part fix so this works whether needrestart is preinstalled OR gets
+# installed by the apt run below (Debian server profile pulls it in fresh;
+# Ubuntu ships it):
+#
+# (a) Drop-in file — read the moment needrestart first runs, even if it
+#     was installed in the same apt transaction we're about to trigger.
+#     DEBIAN_FRONTEND=noninteractive doesn't help here: needrestart uses
+#     its own whiptail dialog, not debconf.
+#
+# (b) Rewrite the main config too, so the setting is visible in the
+#     canonical place after the run (matches what `dpkg-reconfigure
+#     needrestart` would produce).
+sudo install -d -m 0755 /etc/needrestart/conf.d
+sudo tee /etc/needrestart/conf.d/50-linux-bootstrap.conf > /dev/null <<'EOF'
+# Written by linux-bootstrap 10-packages.sh
+# Force automatic service restarts so apt runs stay non-interactive.
+$nrconf{restart} = 'a';
+EOF
+
 if apt_installed needrestart && [ -f /etc/needrestart/needrestart.conf ]; then
     if ! grep -qE "^\s*\\\$nrconf\{restart\}\s*=\s*'a'" /etc/needrestart/needrestart.conf; then
         log "Setting needrestart to non-interactive (auto-restart)"
