@@ -70,10 +70,12 @@ POLICY_BODY='// Written by linux-bootstrap 80-unattended-upgrades.sh
 // The distro-shipped 50unattended-upgrades only enables -security by
 // default; we replace Origins-Pattern here to cover everything.
 //
-// ${distro_id} and ${distro_codename} are unattended-upgrades runtime
-// substitutions (Debian/Ubuntu, trixie/noble/jammy, etc.). Patterns
-// that do not match the running distro are silently ignored, so this
-// block is safe on both.
+// All entries use the fully-qualified "origin=X,codename=Y[,label=Z]"
+// form. The shorthand "X:Y" (used in Ubuntus defaults) is an
+// Ubuntu-only parser extension — Debians unattended-upgrade throws a
+// ValueError on it (splits on "," then expects key=value per piece).
+// ${distro_codename} substitutes to trixie/noble/jammy at runtime;
+// patterns that dont match the current suites are silently ignored.
 
 Unattended-Upgrade::Origins-Pattern {
     // Debian archive: main + point releases (label=Debian) and security.
@@ -82,13 +84,14 @@ Unattended-Upgrade::Origins-Pattern {
     "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
     "origin=Debian,codename=${distro_codename}-updates";
 
-    // Ubuntu archive: main + security + bug-fix updates.
-    "${distro_id}:${distro_codename}";
-    "${distro_id}:${distro_codename}-security";
-    "${distro_id}:${distro_codename}-updates";
+    // Ubuntu archive: main + security + bug-fix updates. Harmless
+    // no-match on Debian (no repo with origin=Ubuntu).
+    "origin=Ubuntu,codename=${distro_codename}";
+    "origin=Ubuntu,codename=${distro_codename}-security";
+    "origin=Ubuntu,codename=${distro_codename}-updates";
     // Ubuntu Extended Security Maintenance (harmless if not subscribed).
-    "${distro_id}ESMApps:${distro_codename}-apps-security";
-    "${distro_id}ESM:${distro_codename}-infra-security";
+    "origin=UbuntuESMApps,codename=${distro_codename}-apps-security";
+    "origin=UbuntuESM,codename=${distro_codename}-infra-security";
 
     // Deliberately NOT included: -proposed, -backports.
 };

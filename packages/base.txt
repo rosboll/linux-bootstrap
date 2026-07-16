@@ -51,11 +51,11 @@ traceroute
 
 # Containers — useful on both workstation and server profile.
 # Note: docker-compose (Python v1) was removed from Trixie. docker.io provides
-# 'docker compose' (subcommand) via the integrated compose plugin.
+# 'docker compose' (subcommand) via the integrated compose plugin. If
+# docker-ce (from download.docker.com) is already installed, 10-packages.sh
+# detects the conflict and skips docker.io — the docker CLI + group are
+# provided by docker-ce anyway.
 docker.io
-
-# Configuration management (ansible client is handy on both)
-ansible
 
 # GPG (base — YubiKey-specific packages live in desktop.txt)
 gnupg

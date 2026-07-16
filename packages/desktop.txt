@@ -25,9 +25,11 @@ virt-manager
 virt-viewer
 bridge-utils
 
-# Infrastructure tooling used from the workstation (writing plans locally).
+# Infrastructure tooling used from the workstation. Servers get managed
+# by ansible; they don't need to run it locally.
 # Note: terraform is not in Debian repos. The HashiCorp apt repository is
 # configured by 10-packages.sh before this list is processed.
+ansible
 terraform
 
 # Remote desktop
