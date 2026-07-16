@@ -56,10 +56,67 @@ if [ ${#to_install[@]} -eq 0 ]; then
     exit 0
 fi
 
+# Tailscale + resolvconf conflict guard.
+# When tailscaled is running on a host that gains the resolvconf package, it
+# rewrites /etc/resolv.conf to point solely at MagicDNS (100.100.100.100).
+# Tailnets with no global nameservers configured then lose external DNS —
+# MagicDNS refuses to recurse for anything outside the tailnet. We can't
+# fix this from a host script (the durable fix is in the tailnet admin
+# panel), so warn and pause instead. Postflight below verifies DNS afterwards.
+resolvconf_incoming=0
+for pkg in "${to_install[@]}"; do
+    if [ "$pkg" = "resolvconf" ]; then
+        resolvconf_incoming=1
+        break
+    fi
+done
+if [ "$resolvconf_incoming" -eq 1 ] && tailscale_active; then
+    warn "Tailscale is running AND resolvconf is about to be installed."
+    warn "This can break external DNS if your tailnet has no global"
+    warn "nameservers configured. Mitigations (pick one):"
+    warn ""
+    warn "  a) Add global nameservers in the tailnet admin panel, then"
+    warn "     continue — DNS keeps working via MagicDNS:"
+    warn "       https://login.tailscale.com/admin/dns"
+    warn ""
+    warn "  b) Disable Tailscale DNS management on this host, then continue"
+    warn "     — DNS falls back to DHCP/NetworkManager:"
+    warn "       sudo tailscale set --accept-dns=false"
+    warn ""
+    warn "If unsure, (b) is safe. Postflight will verify DNS after apt install."
+    if ! is_smoke_test; then
+        read -r -p "Press Enter to continue, or Ctrl+C to abort... "
+    fi
+fi
+
 log "Installing ${#to_install[@]} packages: ${to_install[*]}"
 apt_wait_for_lock
 sudo apt install -y "${to_install[@]}"
 ok "Package installation complete"
+
+# Postflight DNS check. Installing resolvconf (see guard above) or any other
+# package that shuffles /etc/resolv.conf can leave DNS broken. Fail fast with
+# clear recovery steps rather than let 20-locale.sh or 30-shell.sh hit the
+# fallout with a less informative error.
+if ! dns_works; then
+    err "External DNS resolution failed after apt install (getent hosts github.com)."
+    if tailscale_active; then
+        err "Tailscale is running. Likely cause: /etc/resolv.conf now points"
+        err "at MagicDNS (100.100.100.100) only, and your tailnet has no"
+        err "global nameservers configured — so MagicDNS refuses to recurse."
+        err ""
+        err "Quick fix (disable Tailscale DNS management):"
+        err "    sudo tailscale set --accept-dns=false"
+        err "    sudo systemctl restart tailscaled"
+        err "    getent hosts github.com    # verify"
+        err ""
+        err "Or keep MagicDNS by adding global nameservers upstream:"
+        err "    https://login.tailscale.com/admin/dns"
+    else
+        err "Check /etc/resolv.conf and your network configuration."
+    fi
+    exit 1
+fi
 
 # 3. Pin nc to the OpenBSD variant. Both netcat-openbsd and netcat-traditional
 #    register /bin/nc.openbsd and /bin/nc.traditional under /etc/alternatives/nc.

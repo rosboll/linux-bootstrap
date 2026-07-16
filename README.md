@@ -177,6 +177,17 @@ for CI.
   #1108144) even as root. 20-locale.sh uses `update-locale` instead, which
   writes to `/etc/default/locale` — Debian's source of truth for the
   system locale.
+- **Tailscale coexistence**: if `tailscaled` is already running when
+  10-packages.sh installs `resolvconf`, Tailscale rewrites
+  `/etc/resolv.conf` to point solely at MagicDNS (100.100.100.100).
+  Tailnets with no global nameservers configured then lose external DNS —
+  MagicDNS refuses to recurse for non-tailnet queries. 10-packages.sh
+  warns and pauses before the install, and verifies DNS afterwards.
+  Two ways to coexist:
+    - **Keep MagicDNS**: add global nameservers (e.g. 1.1.1.1) at
+      https://login.tailscale.com/admin/dns before running the bootstrap.
+    - **Disable Tailscale DNS on this host**: `sudo tailscale set
+      --accept-dns=false`. DNS falls back to DHCP/NetworkManager.
 
 ## Dotfiles checkout location
 

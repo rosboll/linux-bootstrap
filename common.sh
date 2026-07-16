@@ -141,3 +141,19 @@ EOF
 in_group() {
     id -nG "$USER" | tr ' ' '\n' | grep -qx "$1"
 }
+
+# Whether tailscaled is running as a systemd service. Tailscale reacts to
+# resolvconf install/removal by rewriting /etc/resolv.conf to point at
+# MagicDNS (100.100.100.100) only. If the tailnet has no global nameservers
+# configured in the admin panel, external DNS then fails because MagicDNS
+# refuses to recurse. 10-packages.sh uses this to warn before the change
+# lands. See README "Tailscale coexistence".
+tailscale_active() {
+    systemctl is-active --quiet tailscaled 2>/dev/null
+}
+
+# Whether external DNS resolution currently works. Uses getent (nsswitch) so
+# it reflects what apt / curl / go install will actually experience.
+dns_works() {
+    getent hosts github.com > /dev/null 2>&1
+}
