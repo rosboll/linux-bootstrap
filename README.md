@@ -193,8 +193,7 @@ for CI.
 ## Server profile
 
 `--server` swaps the KDE-desktop assumptions out for a headless server
-posture. Runs on Debian 13 and Ubuntu LTS (24.04 / 22.04). Tested on
-Proxmox guests and OCI ARM VMs.
+posture. Runs on Debian 13 and Ubuntu LTS (24.04 / 22.04).
 
 **What runs**: `10-packages.sh` (with `packages/base.txt` +
 `packages/server.txt`), `20-locale.sh` (no plasma-localerc),
