@@ -35,8 +35,22 @@ require_normal_user() {
     fi
 }
 
-# Verify sudo is usable (cached or password prompt). Fail fast if not.
+# Verify sudo is usable. Prefer the non-interactive path first — this
+# succeeds silently for users with NOPASSWD (common on cloud images like
+# OCI Ubuntu, where 'ubuntu' has `NOPASSWD: ALL`) or with a fresh sudo
+# credential cache. Falling back to `sudo -v` handles the workstation
+# case where the user actually has to type a password.
+#
+# Why not just `sudo -v` alone: on hosts where the user has BOTH a
+# passworded sudoers rule AND a NOPASSWD rule (again, OCI ubuntu:
+# `(ALL:ALL) ALL` + `(ALL) NOPASSWD: ALL`), some sudo versions'
+# validate path still prompts for the password rule, even though the
+# NOPASSWD rule would apply to any actual command. `sudo -n true`
+# probes the effective policy directly.
 require_sudo() {
+    if sudo -n true 2>/dev/null; then
+        return 0
+    fi
     if ! sudo -v; then
         err "sudo authentication failed. Aborting."
         exit 1
