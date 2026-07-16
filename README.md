@@ -250,6 +250,15 @@ chmod 600 ~/.ssh/authorized_keys
   here, which provides `docker compose` (note the space, no hyphen) via the
   built-in compose subcommand. If you prefer Docker's own repository, use
   `docker-ce` and `docker-compose-plugin` from `download.docker.com` instead.
+- **docker.io ⇄ docker-ce coexistence**: Debian's `docker.io` ships a
+  `docker-buildx` package that owns
+  `/usr/libexec/docker/cli-plugins/docker-buildx` — the same path as
+  docker-ce's `docker-buildx-plugin`. Installing both fails with a
+  dpkg file-conflict during unpack. On hosts that already have docker-ce
+  (`docker-ce`, `docker-ce-cli`, `containerd.io`, or `docker-buildx-plugin`
+  installed), 10-packages.sh detects this and silently skips `docker.io`.
+  The docker CLI and group are provided by docker-ce anyway, so
+  40-services.sh's group-add step still works.
 - `bat` installs the binary as `batcat` (avoids name clash with another
   package). Same applies to `fd-find` which installs as `fdfind`. Add aliases
   in `.zshrc` if you want the upstream names.

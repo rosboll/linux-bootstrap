@@ -185,3 +185,16 @@ is_ubuntu() { [ "$(os_id)" = "ubuntu" ]; }
 os_codename() {
     ( . /etc/os-release 2>/dev/null && printf '%s' "${VERSION_CODENAME:-}" )
 }
+
+# Whether docker-ce (from download.docker.com) is already installed on this
+# box. Any of docker-ce, docker-ce-cli, containerd.io, or
+# docker-buildx-plugin means Debian's docker.io would collide on
+# /usr/libexec/docker/cli-plugins/docker-buildx during unpack. Existing
+# docker-ce installs on long-lived servers should be respected — we just
+# skip docker.io in that case; the docker group and CLI are already there.
+docker_ce_installed() {
+    for pkg in docker-ce docker-ce-cli containerd.io docker-buildx-plugin; do
+        apt_installed "$pkg" && return 0
+    done
+    return 1
+}

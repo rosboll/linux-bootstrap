@@ -85,11 +85,13 @@ for m in "${manifests[@]}"; do
 done
 mapfile -t packages < <(sed -E 's/[[:space:]]*#.*//; /^[[:space:]]*$/d' "${manifests[@]}")
 
-# Filter out already-installed packages
+# Filter out already-installed packages and known third-party conflicts.
 to_install=()
 for pkg in "${packages[@]}"; do
     if apt_installed "$pkg"; then
         skip "$pkg already installed"
+    elif [ "$pkg" = "docker.io" ] && docker_ce_installed; then
+        skip "docker.io skipped — docker-ce (docker.com repo) already installed; would file-conflict on docker-buildx"
     else
         to_install+=("$pkg")
     fi
