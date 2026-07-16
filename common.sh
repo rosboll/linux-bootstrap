@@ -69,12 +69,18 @@ apt_installed() {
     dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "ok installed"
 }
 
-# Wait for apt/dpkg locks to be released. KDE's packagekitd and unattended
-# upgrades both grab these locks periodically. Times out after 5 minutes —
-# unattended-upgrades on a fresh system can hold the lock that long.
+# Wait for apt/dpkg locks to be released. KDE's packagekitd and
+# unattended-upgrades both grab these locks periodically. Cloud images
+# (OCI, AWS, etc.) also fire cloud-init + apt-daily(-upgrade) within the
+# first ~15 min after boot, so we allow up to 15 minutes here.
+#
+# Prints a heartbeat every 30s with elapsed time so a long wait doesn't
+# look like a hang under run-all.sh's tee pipe.
 apt_wait_for_lock() {
-    local timeout=300
+    local timeout=900   # 15 min — covers first-boot cloud-init storms
     local elapsed=0
+    local last_print=0
+    local locked lock
     local locks=(
         /var/lib/apt/lists/lock
         /var/lib/dpkg/lock
@@ -82,7 +88,7 @@ apt_wait_for_lock() {
     )
 
     while [ "$elapsed" -lt "$timeout" ]; do
-        local locked=0
+        locked=0
         for lock in "${locks[@]}"; do
             if sudo fuser "$lock" > /dev/null 2>&1; then
                 locked=1
@@ -90,10 +96,20 @@ apt_wait_for_lock() {
             fi
         done
         if [ "$locked" -eq 0 ]; then
+            [ "$elapsed" -gt 0 ] && ok "apt lock released after ${elapsed}s"
             return 0
         fi
+        # First hit — announce who's holding it, then heartbeat every 30s.
         if [ "$elapsed" -eq 0 ]; then
-            warn "Waiting for apt lock to be released (held by packagekitd or similar)..."
+            warn "Waiting for apt lock (up to ${timeout}s). Holder(s):"
+            for lock in "${locks[@]}"; do
+                if sudo fuser "$lock" > /dev/null 2>&1; then
+                    sudo fuser -v "$lock" 2>&1 | sed 's/^/    /' >&2
+                fi
+            done
+        elif [ $((elapsed - last_print)) -ge 30 ]; then
+            warn "  ... still waiting (${elapsed}s elapsed)"
+            last_print=$elapsed
         fi
         sleep 2
         elapsed=$((elapsed + 2))
@@ -105,7 +121,7 @@ apt_wait_for_lock() {
             sudo fuser -v "$lock" 2>&1 | sed 's/^/    /' >&2
         fi
     done
-    err "Try: sudo systemctl stop packagekit unattended-upgrades"
+    err "Try: sudo systemctl stop packagekit unattended-upgrades apt-daily.service apt-daily-upgrade.service"
     return 1
 }
 
@@ -207,6 +223,13 @@ os_codename() {
 # docker-ce installs on long-lived servers should be respected — we just
 # skip docker.io in that case; the docker group and CLI are already there.
 docker_ce_installed() {
+    # 'local' is critical here — the caller in 10-packages.sh iterates
+    # with a variable also named 'pkg'. Without local, this loop's last
+    # iteration would clobber the outer 'pkg' to 'docker-buildx-plugin',
+    # causing that name to end up in the install list even though it's
+    # not in any manifest. Debugged the hard way on an OCI Ubuntu box
+    # with no docker of any kind installed.
+    local pkg
     for pkg in docker-ce docker-ce-cli containerd.io docker-buildx-plugin; do
         apt_installed "$pkg" && return 0
     done
