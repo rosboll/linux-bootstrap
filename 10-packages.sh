@@ -52,8 +52,10 @@ sudo apt update
 
 # 2. Pre-seed debconf answers so apt install runs non-interactive.
 #
-# Wireshark: workstation only; the answer lets non-root users in the
-# 'wireshark' group capture packets. 40-services.sh adds $USER to the group.
+# Wireshark (desktop only): true → dumpcap setuid, users in the
+# 'wireshark' group can capture without sudo. 40-services.sh adds $USER
+# there. Server profile uses tcpdump (base.txt) and does not install
+# wireshark or tshark, so no pre-seed is needed there.
 if is_desktop; then
     echo "wireshark-common wireshark-common/install-setuid boolean true" \
         | sudo debconf-set-selections
@@ -133,7 +135,12 @@ fi
 
 log "Installing ${#to_install[@]} packages: ${to_install[*]}"
 apt_wait_for_lock
-sudo apt install -y "${to_install[@]}"
+# DEBIAN_FRONTEND=noninteractive is a belt-and-braces safety net: any
+# debconf question we haven't explicitly pre-seeded gets the package's
+# default answer instead of firing a whiptail dialog. Without this, an
+# unpreseeded prompt hangs behind run-all.sh's tee pipe with unresponsive
+# arrow/tab keys (whiptail needs a tty on stdout to redraw properly).
+sudo DEBIAN_FRONTEND=noninteractive apt install -y "${to_install[@]}"
 ok "Package installation complete"
 
 # Postflight DNS check. Installing resolvconf (see guard above) or any other

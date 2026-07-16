@@ -205,7 +205,7 @@ block in `20-locale.sh`, and libvirt/kvm/wireshark groups in
 `40-services.sh`.
 
 **Server package overlay** (`packages/server.txt`): `unattended-upgrades`,
-`needrestart`, `ncdu`, `iotop`, `molly-guard`, `tshark`. Everything else
+`needrestart`, `ncdu`, `iotop`, `molly-guard`. Everything else
 comes from `packages/base.txt`.
 
 **SSH lockdown precheck**: `70-ssh-hardening.sh` refuses to write

@@ -1,7 +1,7 @@
 # Server-only packages — installed on top of base.txt when profile=server.
 
-# Automatic security patching. 80-unattended-upgrades.sh configures the
-# policy (security only, no auto-reboot).
+# Automatic upgrades. 80-unattended-upgrades.sh configures the policy
+# (security + main + -updates; no auto-reboot).
 unattended-upgrades
 needrestart      # Ubuntu ships this default-on; harmless on Debian.
 
@@ -14,5 +14,5 @@ iotop
 # "meant to reboot laptop, actually rebooted prod" mistake.
 molly-guard
 
-# Packet capture without the GUI (workstation profile installs wireshark).
-tshark
+# Packet capture: tcpdump (in base.txt) covers the server case.
+# tshark/wireshark are workstation tools and stay out of the server profile.
