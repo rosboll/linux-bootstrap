@@ -299,6 +299,12 @@ chmod 600 ~/.ssh/authorized_keys
       https://login.tailscale.com/admin/dns before running the bootstrap.
     - **Disable Tailscale DNS on this host**: `sudo tailscale set
       --accept-dns=false`. DNS falls back to DHCP/NetworkManager.
+- **resolvconf + NetworkManager first-install race**: on a fresh box, when
+  10-packages.sh installs `resolvconf`, `/etc/resolv.conf` becomes a
+  symlink into `/run/resolvconf/` with no nameservers until NM republishes
+  DNS on the next connection event. 10-packages.sh runs `resolvconf -u`
+  right after the apt install (when NM is active) to trigger the sync, so
+  the postflight DNS check passes without waiting for a reconnect.
 
 ## Dotfiles checkout location
 

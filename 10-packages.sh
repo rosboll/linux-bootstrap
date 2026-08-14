@@ -164,6 +164,19 @@ apt_wait_for_lock
 sudo DEBIAN_FRONTEND=noninteractive apt install -y "${to_install[@]}"
 ok "Package installation complete"
 
+# Self-heal after a fresh resolvconf install. NetworkManager on Debian 13
+# integrates with resolvconf automatically once it's present, but it only
+# republishes DNS on connection events — so right after apt drops resolvconf
+# in, the spool at /run/resolvconf/resolv.conf is header-only and
+# /etc/resolv.conf (now a symlink to it) has no nameservers. `resolvconf -u`
+# regenerates it from the current NM data and unblocks the postflight below.
+# Debugged 2026-08-14 on x9.
+if [ "$resolvconf_incoming" -eq 1 ] \
+   && systemctl is-active --quiet NetworkManager 2>/dev/null; then
+    log "Syncing resolvconf with NetworkManager (fresh resolvconf install)"
+    sudo resolvconf -u
+fi
+
 # Postflight DNS check. Installing resolvconf (see guard above) or any other
 # package that shuffles /etc/resolv.conf can leave DNS broken. Fail fast with
 # clear recovery steps rather than let 20-locale.sh or 30-shell.sh hit the
@@ -182,6 +195,10 @@ if ! dns_works; then
         err ""
         err "Or keep MagicDNS by adding global nameservers upstream:"
         err "    https://login.tailscale.com/admin/dns"
+    elif [ "$resolvconf_incoming" -eq 1 ]; then
+        err "resolvconf was just installed. If NetworkManager isn't feeding it,"
+        err "try:  sudo resolvconf -u  (or restart NetworkManager)."
+        err "Then verify:  cat /etc/resolv.conf ; getent hosts github.com"
     else
         err "Check /etc/resolv.conf and your network configuration."
     fi
