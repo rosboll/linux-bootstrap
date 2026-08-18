@@ -58,11 +58,8 @@ if is_desktop && command -v virsh > /dev/null 2>&1; then
     fi
 fi
 
-# 3. Ensure docker.service is enabled. Skipped in smoke mode — the container
-#    does not run systemd as PID 1, so 'systemctl enable --now' would fail.
-if is_smoke_test; then
-    skip "Smoke test mode — skipping docker.service enable"
-elif systemctl cat docker.service > /dev/null 2>&1; then
+# 3. Ensure docker.service is enabled.
+if systemctl cat docker.service > /dev/null 2>&1; then
     if systemctl is-enabled docker.service > /dev/null 2>&1; then
         skip "docker.service already enabled"
     else

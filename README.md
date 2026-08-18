@@ -154,26 +154,24 @@ hangs, this is what you're hitting. To make a hung run easier to diagnose,
 operation and exits with a clear hint instead of silently hanging behind
 `tee`.
 
-## Smoke test (container)
-
-The repo includes a `Containerfile` and a `Makefile` that boots Debian 13 in
-a container, copies the repo in, and runs `BOOTSTRAP_SMOKE=1 ./run-all.sh
---pentest`. That env var makes scripts skip operations that need credentials
-or hardware we don't have inside a container:
-
-- `00-bootstrap.sh` is not invoked at all
-- `30-shell.sh` skips dotfiles clone, stow, and `systemctl --user`
-- `40-services.sh` skips `docker.service` enable
-- `50-yubikey.sh` exits early
-- `60-pentest-tools.sh` does the apt prereqs only — no go/cargo/pipx
+## Linting
 
 ```bash
-make lint    # shellcheck (apt install shellcheck)
-make smoke   # full container run; uses podman or docker
+shellcheck -x *.sh
 ```
 
-`make smoke` exits non-zero on any script failure, which makes it suitable
-for CI.
+`shellcheck` is in `packages/base.txt`, so it's already present on any
+machine this repo has bootstrapped. `-x` is the part worth remembering: it
+makes shellcheck follow the `source "$DIR/common.sh"` line into `common.sh`
+instead of treating every helper from it as an undefined command.
+
+That is the whole test story, deliberately. These scripts are written to
+run once on a fresh machine, so the useful checks are static ones plus
+reading the script before you run it. There used to be a container
+smoke-test harness here; it went unused, and the container image papered
+over a real bug (it installed `locales`, which no package manifest did —
+so 20-locale.sh's failure on minimal Ubuntu images never surfaced). Dead
+test infrastructure that manufactures confidence is worse than none.
 
 ## What each script does
 

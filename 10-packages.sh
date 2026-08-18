@@ -149,9 +149,7 @@ if [ "$resolvconf_incoming" -eq 1 ] && tailscale_active; then
     warn "       sudo tailscale set --accept-dns=false"
     warn ""
     warn "If unsure, (b) is safe. Postflight will verify DNS after apt install."
-    if ! is_smoke_test; then
-        read -r -p "Press Enter to continue, or Ctrl+C to abort... "
-    fi
+    read -r -p "Press Enter to continue, or Ctrl+C to abort... "
 fi
 
 log "Installing ${#to_install[@]} packages: ${to_install[*]}"

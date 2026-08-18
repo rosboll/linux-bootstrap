@@ -67,8 +67,7 @@ else
     ok "zsh set for root"
 fi
 
-# 3. Clone or update dotfiles. Skipped in smoke-test mode — the container
-#    has no SSH access to GitHub.
+# 3. Clone or update dotfiles.
 #
 # Verify SSH to GitHub works non-interactively before touching git.
 # If the user's key is passphrase-protected and not loaded into the agent,
@@ -100,28 +99,24 @@ verify_github_ssh_noninteractive() {
     return 1
 }
 
-if is_smoke_test; then
-    skip "Smoke test mode — skipping dotfiles clone and stow"
-else
-    # HTTPS clone (server profile) doesn't need ssh-agent — skip the
-    # GitHub SSH precheck. Desktop profile still guards against passphrase
-    # prompts silently hanging behind tee.
-    if is_desktop; then
-        verify_github_ssh_noninteractive || exit 1
-    fi
-    if [ -d "$DOTFILES_DIR/.git" ]; then
-        log "Updating dotfiles in $DOTFILES_DIR"
-        if (cd "$DOTFILES_DIR" && git pull --ff-only); then
-            ok "Dotfiles up to date"
-        else
-            warn "git pull --ff-only in $DOTFILES_DIR did not succeed (local changes? diverged?) — continuing with current checkout"
-        fi
+# HTTPS clone (server profile) doesn't need ssh-agent — skip the
+# GitHub SSH precheck. Desktop profile still guards against passphrase
+# prompts silently hanging behind tee.
+if is_desktop; then
+    verify_github_ssh_noninteractive || exit 1
+fi
+if [ -d "$DOTFILES_DIR/.git" ]; then
+    log "Updating dotfiles in $DOTFILES_DIR"
+    if (cd "$DOTFILES_DIR" && git pull --ff-only); then
+        ok "Dotfiles up to date"
     else
-        log "Cloning dotfiles to $DOTFILES_DIR"
-        mkdir -p "$(dirname "$DOTFILES_DIR")"
-        git clone "$DOTFILES_REPO" "$DOTFILES_DIR"
-        ok "Dotfiles cloned"
+        warn "git pull --ff-only in $DOTFILES_DIR did not succeed (local changes? diverged?) — continuing with current checkout"
     fi
+else
+    log "Cloning dotfiles to $DOTFILES_DIR"
+    mkdir -p "$(dirname "$DOTFILES_DIR")"
+    git clone "$DOTFILES_REPO" "$DOTFILES_DIR"
+    ok "Dotfiles cloned"
 fi
 
 # 4. Stow dotfiles. The dotfiles repo uses a FLAT layout: every target file
@@ -131,74 +126,72 @@ fi
 #
 #    Conflict handling: any pre-existing real file under $HOME that the repo
 #    wants to own gets moved to ~/original-<name> first.
-if ! is_smoke_test; then
-    # Move pre-existing real files aside so stow can take over their slot.
-    # Source of truth is stow's own dry-run output (`--no`): we ask stow
-    # what would conflict, move each conflicting file to ~/original-<name>,
-    # and loop until stow reports a clean run. Two passes are usually
-    # enough; cap at 4 to avoid an infinite loop if stow ever reports the
-    # same conflict on a path we couldn't move.
-    move_aside() {
-        local rel="$1"
-        local target_root="$2"
-        local home_target="$target_root/$rel"
-        if [ -e "$home_target" ] && [ ! -L "$home_target" ]; then
-            local flat
-            flat=$(printf '%s' "$rel" | tr '/' '_')
-            local backup="$target_root/original-${flat#.}"
-            log "Moving $home_target -> $backup"
-            if [ "$target_root" = "$HOME" ]; then
-                mv "$home_target" "$backup"
-            else
-                sudo mv "$home_target" "$backup"
-            fi
+# Move pre-existing real files aside so stow can take over their slot.
+# Source of truth is stow's own dry-run output (`--no`): we ask stow
+# what would conflict, move each conflicting file to ~/original-<name>,
+# and loop until stow reports a clean run. Two passes are usually
+# enough; cap at 4 to avoid an infinite loop if stow ever reports the
+# same conflict on a path we couldn't move.
+move_aside() {
+    local rel="$1"
+    local target_root="$2"
+    local home_target="$target_root/$rel"
+    if [ -e "$home_target" ] && [ ! -L "$home_target" ]; then
+        local flat
+        flat=$(printf '%s' "$rel" | tr '/' '_')
+        local backup="$target_root/original-${flat#.}"
+        log "Moving $home_target -> $backup"
+        if [ "$target_root" = "$HOME" ]; then
+            mv "$home_target" "$backup"
+        else
+            sudo mv "$home_target" "$backup"
         fi
-    }
+    fi
+}
 
-    resolve_stow_conflicts() {
-        local target_root="$1"
-        local stow_cmd=("stow" "-n" "--target=$target_root" ".")
-        [ "$target_root" != "$HOME" ] && stow_cmd=("sudo" "${stow_cmd[@]}")
+resolve_stow_conflicts() {
+    local target_root="$1"
+    local stow_cmd=("stow" "-n" "--target=$target_root" ".")
+    [ "$target_root" != "$HOME" ] && stow_cmd=("sudo" "${stow_cmd[@]}")
 
-        local pass stow_output conflicts
-        for pass in 1 2 3 4; do
-            # stow -n exits non-zero when conflicts exist — swallow that
-            # under set -e -o pipefail, then parse the warnings from output.
-            # Explicit subshell so the `|| true` only catches stow's exit,
-            # not a hypothetical cd failure.
-            stow_output=$( (cd "$DOTFILES_DIR" && "${stow_cmd[@]}") 2>&1 || true)
-            conflicts=$(printf '%s\n' "$stow_output" \
-                | awk '/existing target is (not owned by stow|neither a link nor a directory)/ { print $NF }' \
-                | sort -u)
-            [ -z "$conflicts" ] && return 0
-            log "stow dry-run reported $(printf '%s\n' "$conflicts" | wc -l) conflict(s) in $target_root (pass $pass)"
-            while IFS= read -r rel; do
-                [ -n "$rel" ] && move_aside "$rel" "$target_root"
-            done <<< "$conflicts"
-        done
-        err "stow conflicts in $target_root persisted after 4 passes:"
-        printf '%s\n' "$conflicts" | sed 's/^/    /' >&2
-        return 1
-    }
+    local pass stow_output conflicts
+    for pass in 1 2 3 4; do
+        # stow -n exits non-zero when conflicts exist — swallow that
+        # under set -e -o pipefail, then parse the warnings from output.
+        # Explicit subshell so the `|| true` only catches stow's exit,
+        # not a hypothetical cd failure.
+        stow_output=$( (cd "$DOTFILES_DIR" && "${stow_cmd[@]}") 2>&1 || true)
+        conflicts=$(printf '%s\n' "$stow_output" \
+            | awk '/existing target is (not owned by stow|neither a link nor a directory)/ { print $NF }' \
+            | sort -u)
+        [ -z "$conflicts" ] && return 0
+        log "stow dry-run reported $(printf '%s\n' "$conflicts" | wc -l) conflict(s) in $target_root (pass $pass)"
+        while IFS= read -r rel; do
+            [ -n "$rel" ] && move_aside "$rel" "$target_root"
+        done <<< "$conflicts"
+    done
+    err "stow conflicts in $target_root persisted after 4 passes:"
+    printf '%s\n' "$conflicts" | sed 's/^/    /' >&2
+    return 1
+}
 
-    log "Resolving stow conflicts under \$HOME"
-    resolve_stow_conflicts "$HOME"
+log "Resolving stow conflicts under \$HOME"
+resolve_stow_conflicts "$HOME"
 
-    log "Running stow into \$HOME"
-    (cd "$DOTFILES_DIR" && stow --restow --target="$HOME" .)
-    ok "Dotfiles stowed into \$HOME"
+log "Running stow into \$HOME"
+(cd "$DOTFILES_DIR" && stow --restow --target="$HOME" .)
+ok "Dotfiles stowed into \$HOME"
 
-    # Share the same dotfiles with root so root's zsh has the user's config.
-    # Symlinks point back into /home/$USER/dotfiles; root needs read access
-    # there (default Debian /home perms allow this — verify if you've locked
-    # /home down).
-    log "Resolving stow conflicts under /root"
-    resolve_stow_conflicts /root
+# Share the same dotfiles with root so root's zsh has the user's config.
+# Symlinks point back into /home/$USER/dotfiles; root needs read access
+# there (default Debian /home perms allow this — verify if you've locked
+# /home down).
+log "Resolving stow conflicts under /root"
+resolve_stow_conflicts /root
 
-    log "Stowing the same dotfiles into /root"
-    (cd "$DOTFILES_DIR" && sudo stow --restow --target=/root .)
-    ok "Dotfiles stowed into /root (symlinks into $DOTFILES_DIR)"
-fi
+log "Stowing the same dotfiles into /root"
+(cd "$DOTFILES_DIR" && sudo stow --restow --target=/root .)
+ok "Dotfiles stowed into /root (symlinks into $DOTFILES_DIR)"
 
 # 5. ssh-agent as a user systemd unit (so it persists across login sessions).
 #    ExecStartPre cleans up a stale socket — without it, restarts fail.
@@ -224,9 +217,7 @@ if [ ! -f "$SSH_AGENT_UNIT" ] || [ "$(cat "$SSH_AGENT_UNIT")" != "$SSH_AGENT_UNI
     unit_changed=1
 fi
 
-if is_smoke_test; then
-    skip "Smoke test mode — skipping systemctl --user (no session bus in container)"
-elif [ "$unit_changed" -eq 1 ]; then
+if [ "$unit_changed" -eq 1 ]; then
     # Always restart after a body change. `enable --now` is "start if not
     # running" — it does NOT pick up the new ExecStart on an already-running
     # instance, which leaves a stale process bound to the old command line
@@ -257,9 +248,7 @@ warn "Make sure your .zshrc exports: export SSH_AUTH_SOCK=\"\$XDG_RUNTIME_DIR/ss
 #
 #    Mask both the .socket and .service so they cannot auto-activate on the
 #    next login. Stop them in the current session for good measure.
-if is_smoke_test; then
-    skip "Smoke test mode — skipping gcr-ssh-agent masking"
-elif systemctl --user cat gcr-ssh-agent.socket > /dev/null 2>&1; then
+if systemctl --user cat gcr-ssh-agent.socket > /dev/null 2>&1; then
     enabled_state=$(systemctl --user is-enabled gcr-ssh-agent.socket 2>/dev/null || true)
     if [ "$enabled_state" = "masked" ]; then
         skip "gcr-ssh-agent.socket already masked"

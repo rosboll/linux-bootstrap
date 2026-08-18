@@ -26,11 +26,6 @@ if is_desktop; then
     exit 0
 fi
 
-if is_smoke_test; then
-    skip "Smoke test mode — skipping unattended-upgrades (no systemd timers in container)"
-    exit 0
-fi
-
 require_sudo
 
 if ! apt_installed unattended-upgrades; then

@@ -17,11 +17,6 @@ if is_desktop; then
     exit 0
 fi
 
-if is_smoke_test; then
-    skip "Smoke test mode — skipping timezone (container may not have working systemd)"
-    exit 0
-fi
-
 require_sudo
 
 TZ_WANT="Europe/Stockholm"

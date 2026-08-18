@@ -57,13 +57,6 @@ require_sudo() {
     fi
 }
 
-# Smoke-test mode skips operations that need network credentials we don't
-# have inside a container (cloning private repos, talking to GitHub via SSH,
-# touching real hardware). The Containerfile sets BOOTSTRAP_SMOKE=1.
-is_smoke_test() {
-    [ "${BOOTSTRAP_SMOKE:-0}" = "1" ]
-}
-
 # Check if an apt package is installed (status "ok installed").
 apt_installed() {
     dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "ok installed"

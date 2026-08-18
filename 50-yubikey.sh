@@ -8,12 +8,6 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DIR/common.sh"
 
 require_normal_user
-
-if is_smoke_test; then
-    skip "Smoke test mode — skipping YubiKey PAM configuration"
-    exit 0
-fi
-
 require_sudo
 
 # 1. Verify required packages are installed
