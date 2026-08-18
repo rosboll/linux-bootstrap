@@ -1,12 +1,14 @@
 # linux-bootstrap
 
 > **Personal setup, published as-is.** This repo bootstraps *my*
-> Debian/Ubuntu machines. It hardcodes Swedish locale (`sv_SE.UTF-8`),
-> `Europe/Stockholm` timezone, `rosboll/dotfiles` as the dotfiles source,
-> and an opinionated package selection. If you're not me, fork it and
-> adjust before running. **Read every script before executing** — these
-> touch PAM, sshd, and package management as root. Licensed MIT (see
-> [LICENSE](LICENSE)), no warranty.
+> Debian/Ubuntu machines. It hardcodes British English as the interface
+> language with Swedish formats (`LANG=en_GB.UTF-8`, `LC_*=sv_SE.UTF-8` —
+> ISO dates, 24h clock, metric), `Europe/Stockholm` timezone,
+> `rosboll/dotfiles` as the dotfiles source, and an opinionated package
+> selection. If you're not me, fork it and adjust before running.
+> **Read every script before executing** — these touch PAM, sshd, and
+> package management as root. Licensed MIT (see [LICENSE](LICENSE)), no
+> warranty.
 
 Numbered, idempotent scripts for setting up either:
 
@@ -179,12 +181,12 @@ test infrastructure that manufactures confidence is worse than none.
 |----------------------------|----------------|--------------------------------------------------------------------------------------------|------------|
 | 00-bootstrap.sh            | both           | SSH key, clone this repo                                                                   | Yes        |
 | 10-packages.sh             | both           | apt packages from `packages/base.txt` + `packages/{desktop,server}.txt`; configures VS Code / HashiCorp / gh repos (HashiCorp suite from `/etc/os-release`) | Yes |
-| 20-locale.sh               | both           | sv_SE.UTF-8 locale + sshd AcceptEnv + `TIME_STYLE=long-iso`. KDE `plasma-localerc` only on desktop | Yes |
+| 20-locale.sh               | both           | `LANG=en_GB.UTF-8` (language) + `LC_*=sv_SE.UTF-8` (formats: ISO dates, 24h, metric) + `TIME_STYLE=long-iso` + comments out sshd `AcceptEnv`. KDE `plasma-localerc` only on desktop | Yes |
 | 30-shell.sh                | both           | zsh as default for $USER and root + clone & stow dotfiles into both + ssh-agent user unit + mask gcr-ssh-agent | Yes |
 | 40-services.sh             | both           | docker group. libvirt/kvm/wireshark groups + libvirt default network only on desktop       | Yes        |
 | 50-yubikey.sh              | desktop        | libpam-u2f, PAM config for sudo (touch only, skipped over SSH via pam_exec helper)         | Yes        |
-| 60-pentest-tools.sh        | opt-in         | nuclei, subfinder, httpx, naabu, ffuf, gobuster, kerbrute, mitmproxy, netexec, responder, sqlmap, nikto, hydra, feroxbuster, semgrep, impacket, certipy-ad, RustHound-CE, Obsidian. Source of each tool: apt / pipx / go install / cargo install / git clone — see the script. | Yes |
-| 70-ssh-hardening.sh        | server         | Drop-in `sshd_config.d/99-bootstrap-hardening.conf`: PasswordAuthentication no, PermitRootLogin prohibit-password, MaxAuthTries 4, LoginGraceTime 30. Refuses to run if `$USER` has no `authorized_keys` (would lock you out). `sshd -t` before reload. | Yes |
+| 60-pentest-tools.sh        | opt-in         | nuclei, subfinder, httpx, naabu, interactsh-client, ffuf, gobuster, kerbrute, mitmproxy, netexec, responder, sqlmap, nikto, hydra, feroxbuster, semgrep, impacket, certipy-ad, RustHound-CE, Obsidian. Source of each tool: apt / pipx / go install / cargo install / git clone — see the script. | Yes |
+| 70-ssh-hardening.sh        | server         | Drop-in `sshd_config.d/01-bootstrap-hardening.conf` (the `01-` prefix is load-bearing — see below): PasswordAuthentication no, PermitRootLogin prohibit-password, ChallengeResponseAuthentication no, KbdInteractiveAuthentication no, MaxAuthTries 4, LoginGraceTime 30. Refuses to run if `$USER` has no `authorized_keys` (would lock you out). `sshd -t` before reload. | Yes |
 | 80-unattended-upgrades.sh  | server         | Enables `unattended-upgrades` for **all** origins (security + main + `-updates`), no auto-reboot. Ensures `apt-daily.timer` + `apt-daily-upgrade.timer` + `unattended-upgrades.service` are enabled. Config in `apt.conf.d/99-bootstrap-unattended.conf`. | Yes |
 | 85-timezone.sh             | server         | `timedatectl set-timezone Europe/Stockholm`                                                | Yes        |
 
@@ -217,6 +219,16 @@ mkdir -p ~/.ssh && chmod 700 ~/.ssh
 printf 'ssh-ed25519 AAAA... comment\n' >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ```
+
+**Why the drop-in is named `01-`**: `sshd_config.d/*.conf` files are read in
+lexical order and sshd uses **first-value-wins** semantics. Ubuntu cloud
+images (OCI, AWS, GCP) ship `50-cloud-init.conf` containing
+`PasswordAuthentication yes`. A drop-in named `99-` would sort *after* it and
+lose — the hardening would silently no-op while appearing to succeed.
+`01-` beats every stock cloud-image file. If you add your own drop-in that
+sets the same keywords, name it so it sorts *later* than `01-`.
+`70-ssh-hardening.sh` removes the legacy `99-bootstrap-hardening.conf` that
+earlier versions of this repo wrote.
 
 **Ubuntu quirks handled**:
 - `HashiCorp` apt-repo suite is picked dynamically from
@@ -265,9 +277,11 @@ chmod 600 ~/.ssh/authorized_keys
 - VS Code (`code`), Terraform, and the GitHub CLI (`gh`) are not in Debian
   repos. 10-packages.sh adds the upstream apt repositories (DEB822 format)
   and signing keys via the `configure_apt_repo` helper in `common.sh`.
-- The Debian suite for HashiCorp's repo is hardcoded (`trixie`) — when
-  upgrading to a new Debian release, update both this and the call in
-  `10-packages.sh`.
+- The suite for HashiCorp's repo is read from `VERSION_CODENAME` in
+  `/etc/os-release` (`trixie` / `noble` / `jammy`), so a release upgrade
+  needs no edit here. `10-packages.sh` aborts with a clear error if the
+  codename can't be determined, rather than configuring a repo that
+  resolves to nothing.
 - Both `netcat-openbsd` and `netcat-traditional` register an alternative for
   `/usr/bin/nc`. 10-packages.sh pins it to the OpenBSD variant
   (`update-alternatives --set nc /bin/nc.openbsd`).
@@ -286,6 +300,13 @@ chmod 600 ~/.ssh/authorized_keys
   #1108144) even as root. 20-locale.sh uses `update-locale` instead, which
   writes to `/etc/default/locale` — Debian's source of truth for the
   system locale.
+- `locales` is listed explicitly in `packages/base.txt` because
+  20-locale.sh needs `/etc/locale.gen` and the `locale-gen` binary. Debian's
+  standard-system task usually installs it, but **minimal Ubuntu cloud
+  images do not** — and without it 20-locale.sh only prints "Did not find a
+  line for …" warnings and then sets `LANG` to a locale that was never
+  generated. Since `10-packages.sh` runs first, the package is in place by
+  the time 20-locale.sh needs it.
 - **Tailscale coexistence**: if `tailscaled` is already running when
   10-packages.sh installs `resolvconf`, Tailscale rewrites
   `/etc/resolv.conf` to point solely at MagicDNS (100.100.100.100).

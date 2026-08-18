@@ -2,6 +2,12 @@
 # Lines starting with # are comments. Empty lines are ignored.
 # Trailing inline comments are stripped before installation.
 
+# Locale support. 20-locale.sh edits /etc/locale.gen and runs locale-gen;
+# both come from this package. Debian's standard-system task usually pulls
+# it in, but minimal Ubuntu cloud images do not — without it 20-locale.sh
+# degrades to warnings and sets LANG to a locale that was never generated.
+locales
+
 # Shell and dotfiles
 zsh
 stow
@@ -39,7 +45,9 @@ shellcheck
 
 # Network CLI (no GUI)
 # Note: 'nc' from netcat-openbsd is preferred over Trixie's default
-# netcat-traditional (better IPv6 support, -e flag for pentesting).
+# netcat-traditional — better IPv6 support, -N (shutdown on EOF), and it's
+# the variant nearly all tooling and write-ups assume. Note that Debian
+# builds netcat-openbsd WITHOUT -e; use ncat (in this list) if you need it.
 # 10-packages.sh pins update-alternatives accordingly.
 nmap
 ncat

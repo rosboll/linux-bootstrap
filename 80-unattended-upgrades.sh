@@ -60,6 +60,8 @@ fi
 #    allowed origins and we don't want to fight it). Late alphabetical
 #    filename (99-) so our values win.
 POLICY=/etc/apt/apt.conf.d/99-bootstrap-unattended.conf
+# shellcheck disable=SC2016  # ${distro_codename} must reach the config file
+# literally — apt's unattended-upgrade expands it at runtime, not bash.
 POLICY_BODY='// Written by linux-bootstrap 80-unattended-upgrades.sh
 // Overrides selected keys in /etc/apt/apt.conf.d/50unattended-upgrades.
 // The distro-shipped 50unattended-upgrades only enables -security by
@@ -129,12 +131,20 @@ for unit in apt-daily.timer apt-daily-upgrade.timer unattended-upgrades.service;
 done
 
 # 4. Dry-run the config so a mistake surfaces here instead of at 06:00 tomorrow.
+#    mktemp rather than a fixed /tmp path: /tmp is world-writable and sticky,
+#    so a predictable filename is squattable by another local user.
+dryrun_log=$(mktemp -t unattended-upgrades-dryrun.XXXXXXXX)
 log "Validating unattended-upgrades config (dry-run)"
-if ! sudo unattended-upgrade --dry-run --debug > /tmp/unattended-upgrades-dryrun.log 2>&1; then
-    err "unattended-upgrade --dry-run failed. See /tmp/unattended-upgrades-dryrun.log"
+# shellcheck disable=SC2024  # The redirect is deliberately performed by the
+# invoking user's shell, not root: $dryrun_log is the user's own temp file and
+# only unattended-upgrade itself needs elevation.
+if ! sudo unattended-upgrade --dry-run --debug > "$dryrun_log" 2>&1; then
+    err "unattended-upgrade --dry-run failed. See $dryrun_log"
     exit 1
 fi
 ok "Config valid (last 3 lines):"
-tail -n 3 /tmp/unattended-upgrades-dryrun.log | sed 's/^/    /'
+tail -n 3 "$dryrun_log" | sed 's/^/    /'
+# Only reached on success — the failure path above keeps the log for triage.
+rm -f "$dryrun_log"
 
 ok "unattended-upgrades configured (all updates, no auto-reboot)"

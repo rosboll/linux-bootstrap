@@ -205,7 +205,9 @@ fi
 
 # 4. Pin nc to the OpenBSD variant. Both netcat-openbsd and netcat-traditional
 #    register /bin/nc.openbsd and /bin/nc.traditional under /etc/alternatives/nc.
-#    We want the OpenBSD one (better IPv6, -e flag for pentesting).
+#    We want the OpenBSD one: better IPv6 support, -N (shutdown on EOF), and
+#    it's what most tooling and write-ups assume. Note Debian builds it
+#    WITHOUT -e — reach for ncat (nmap's netcat) when you need that.
 if [ -e /bin/nc.openbsd ] \
    && command -v update-alternatives > /dev/null 2>&1 \
    && [ "$(readlink -f /etc/alternatives/nc 2>/dev/null)" != "/bin/nc.openbsd" ]; then

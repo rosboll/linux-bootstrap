@@ -110,6 +110,19 @@ fi
 
 # 4. Disable SSH locale forwarding on the server side. This stops incoming
 #    SSH sessions from dragging unwanted locale variables from the client.
+#
+#    This is the one place we edit /etc/ssh/sshd_config in place instead of
+#    dropping a file into sshd_config.d/ the way 70-ssh-hardening.sh does.
+#    That is deliberate, not an oversight: AcceptEnv is *cumulative*. Every
+#    AcceptEnv directive appends to the accepted-variable list, and sshd has
+#    no negating form ("AcceptEnv none" is not a thing). So a drop-in can
+#    only ever add more variables — it cannot take back what the main config
+#    already accepts. Commenting out the stock line is the only mechanism.
+#
+#    Consequence: an openssh-server upgrade that ships a changed conffile
+#    will prompt (dpkg never silently overwrites a modified conffile), and
+#    keeping the maintainer's version re-enables AcceptEnv. Re-run this
+#    script afterwards; it is idempotent.
 SSHD_CONFIG="/etc/ssh/sshd_config"
 if [ -f "$SSHD_CONFIG" ]; then
     if grep -qE "^\s*AcceptEnv\s+LANG\s+LC_\*" "$SSHD_CONFIG"; then
