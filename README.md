@@ -180,7 +180,7 @@ test infrastructure that manufactures confidence is worse than none.
 | Script                     | Profile        | Description                                                                                | Idempotent |
 |----------------------------|----------------|--------------------------------------------------------------------------------------------|------------|
 | 00-bootstrap.sh            | both           | SSH key, clone this repo                                                                   | Yes        |
-| 10-packages.sh             | both           | apt packages from `packages/base.txt` + `packages/{desktop,server}.txt`; configures VS Code / HashiCorp / gh repos (HashiCorp suite from `/etc/os-release`) | Yes |
+| 10-packages.sh             | both           | apt packages from `packages/base.txt` + `packages/{desktop,server}.txt`; configures Docker / VS Code / HashiCorp / gh repos (Docker and HashiCorp suites from `/etc/os-release`); migrates any distro `docker.io` stack to `docker-ce` | Yes |
 | 20-locale.sh               | both           | `LANG=en_GB.UTF-8` (language) + `LC_*=sv_SE.UTF-8` (formats: ISO dates, 24h, metric) + `TIME_STYLE=long-iso` + comments out sshd `AcceptEnv`. KDE `plasma-localerc` only on desktop | Yes |
 | 30-shell.sh                | both           | zsh as default for $USER and root + clone & stow dotfiles into both + ssh-agent user unit + mask gcr-ssh-agent | Yes |
 | 40-services.sh             | both           | docker group. libvirt/kvm/wireshark groups + libvirt default network only on desktop       | Yes        |
@@ -256,19 +256,35 @@ earlier versions of this repo wrote.
 
 ## Notes on Debian 13 (Trixie) packaging quirks
 
-- `docker-compose` (Python v1) was removed from Trixie. `docker.io` is used
-  here, which provides `docker compose` (note the space, no hyphen) via the
-  built-in compose subcommand. If you prefer Docker's own repository, use
-  `docker-ce` and `docker-compose-plugin` from `download.docker.com` instead.
-- **docker.io ⇄ docker-ce coexistence**: Debian's `docker.io` ships a
-  `docker-buildx` package that owns
-  `/usr/libexec/docker/cli-plugins/docker-buildx` — the same path as
-  docker-ce's `docker-buildx-plugin`. Installing both fails with a
-  dpkg file-conflict during unpack. On hosts that already have docker-ce
-  (`docker-ce`, `docker-ce-cli`, `containerd.io`, or `docker-buildx-plugin`
-  installed), 10-packages.sh detects this and silently skips `docker.io`.
-  The docker CLI and group are provided by docker-ce anyway, so
-  40-services.sh's group-add step still works.
+- **Docker comes from Docker, not the distro.** `packages/base.txt` installs
+  `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin` and
+  `docker-compose-plugin` from `download.docker.com`. Reason: Debian stable
+  lags by roughly two major versions — Trixie ships `docker.io` 26.1.5 while
+  upstream's trixie suite is on 28.x — and Docker's own docs and
+  troubleshooting all assume the upstream packages. `docker compose` (space,
+  no hyphen) and `docker buildx` come as first-class plugins.
+  (This gap is specific to Debian/Ubuntu *stable*. Rolling distros that
+  track Debian testing carry a much fresher `docker.io` and have no such
+  problem — see the derivative note below.)
+- The Docker repo is per-distro *and* per-release, so 10-packages.sh builds
+  both the URL path and the suite from `/etc/os-release`
+  (`/linux/debian` + `trixie`, `/linux/ubuntu` + `noble`/`jammy`). It aborts
+  with a clear error on any other `ID`, because **Docker publishes nothing
+  for derivatives** — there is no `/linux/kali`, no Mint or Pop!\_OS suite.
+  If you fork this for a derivative, stay on the distro's `docker.io`.
+- **Migrating off `docker.io` is automatic but not silent.** The two stacks
+  can't coexist: `docker.io` ships `docker-buildx` owning
+  `/usr/libexec/docker/cli-plugins/docker-buildx`, the same path as
+  docker-ce's `docker-buildx-plugin`, and `containerd` collides with
+  `containerd.io` the same way — apt aborts mid-unpack if it meets both.
+  So on a host that still has the distro packages, 10-packages.sh lists
+  exactly what it will remove, pauses for confirmation, stops the daemon so
+  containers shut down cleanly, and then removes them.
+  It uses **`apt remove`, never `purge`** — `/var/lib/docker` (images,
+  volumes, containers) survives and docker-ce adopts it on start. Purging
+  `docker.io` would run a postrm that deletes `/var/lib/docker` outright.
+  A postflight check then confirms `docker --version` and
+  `docker compose version` both respond.
 - `bat` installs the binary as `batcat` (avoids name clash with another
   package). Same applies to `fd-find` which installs as `fdfind`. Add aliases
   in `.zshrc` if you want the upstream names.

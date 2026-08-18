@@ -28,6 +28,35 @@ configure_apt_repo "github-cli" \
     "https://cli.github.com/packages" \
     "stable" "main" "amd64 arm64"
 
+# Docker, from download.docker.com rather than the distro's docker.io.
+# Both profiles get it (docker-ce* live in packages/base.txt).
+#
+# Docker publishes a separate tree per distro and a suite per release, so
+# both the URL path and the suite come from /etc/os-release — the same
+# shape as the HashiCorp block below. Verified present upstream for
+# debian/trixie, ubuntu/noble and ubuntu/jammy.
+#
+# NOTE for forks: Docker publishes nothing for Debian/Ubuntu derivatives —
+# there is no /linux/kali, no Mint or Pop!_OS suite. On a derivative you
+# must pin this to the Debian or Ubuntu suite it tracks, which Docker does
+# not support. Stick to distro docker.io there.
+docker_distro=$(os_id)
+docker_suite=$(os_codename)
+if [ -z "$docker_distro" ] || [ -z "$docker_suite" ]; then
+    err "Could not determine distribution ID/codename from /etc/os-release."
+    err "Docker's apt repo needs both (e.g. debian/trixie, ubuntu/noble)."
+    exit 1
+fi
+if [ "$docker_distro" != "debian" ] && [ "$docker_distro" != "ubuntu" ]; then
+    err "Unsupported distribution for Docker's apt repo: $docker_distro"
+    err "download.docker.com only publishes /linux/debian and /linux/ubuntu."
+    exit 1
+fi
+configure_apt_repo "docker" \
+    "https://download.docker.com/linux/${docker_distro}/gpg" \
+    "https://download.docker.com/linux/${docker_distro}" \
+    "$docker_suite" "stable" "amd64 arm64"
+
 if is_desktop; then
     configure_apt_repo "vscode" \
         "https://packages.microsoft.com/keys/microsoft.asc" \
@@ -92,7 +121,40 @@ if apt_installed needrestart && [ -f /etc/needrestart/needrestart.conf ]; then
     fi
 fi
 
-# 3. Read the package manifests. Base is always loaded; profile overlay
+# 3. Migrate off the distro-packaged Docker stack.
+#
+# Debian/Ubuntu's docker.io and Docker's docker-ce cannot coexist — see the
+# comment on DISTRO_DOCKER_PKGS in common.sh for the exact file conflicts.
+# apt would abort mid-unpack, so the old packages come off first.
+#
+# 'apt remove', never 'purge': /var/lib/docker (images, volumes,
+# containers) is left untouched and docker-ce adopts it as-is. Purging
+# docker.io runs a postrm that deletes /var/lib/docker outright.
+mapfile -t distro_docker < <(installed_distro_docker_pkgs)
+if [ ${#distro_docker[@]} -gt 0 ]; then
+    warn "Docker is provided by docker-ce (download.docker.com) on this repo."
+    warn "These distro packages conflict and will be REMOVED first:"
+    for pkg in "${distro_docker[@]}"; do
+        warn "    $pkg"
+    done
+    warn ""
+    warn "Running containers will be stopped. Image, volume and container"
+    warn "data under /var/lib/docker is preserved — this is 'apt remove',"
+    warn "not 'purge' — and docker-ce picks it up on start."
+    read -r -p "Press Enter to continue, or Ctrl+C to abort... "
+
+    # Stop the daemon first so containers shut down cleanly rather than
+    # being killed when dpkg pulls the binaries out from under them.
+    log "Stopping docker before removal"
+    sudo systemctl stop docker.socket docker.service 2>/dev/null || true
+
+    log "Removing distro Docker packages: ${distro_docker[*]}"
+    apt_wait_for_lock
+    sudo apt remove -y "${distro_docker[@]}"
+    ok "Distro Docker packages removed (/var/lib/docker left intact)"
+fi
+
+# 4. Read the package manifests. Base is always loaded; profile overlay
 #    (desktop.txt or server.txt) is added on top. Comments and blank lines
 #    are stripped.
 manifests=("$DIR/packages/base.txt" "$DIR/packages/${profile}.txt")
@@ -104,13 +166,11 @@ for m in "${manifests[@]}"; do
 done
 mapfile -t packages < <(sed -E 's/[[:space:]]*#.*//; /^[[:space:]]*$/d' "${manifests[@]}")
 
-# Filter out already-installed packages and known third-party conflicts.
+# Filter out already-installed packages.
 to_install=()
 for pkg in "${packages[@]}"; do
     if apt_installed "$pkg"; then
         skip "$pkg already installed"
-    elif [ "$pkg" = "docker.io" ] && docker_ce_installed; then
-        skip "docker.io skipped — docker-ce (docker.com repo) already installed; would file-conflict on docker-buildx"
     else
         to_install+=("$pkg")
     fi
@@ -203,7 +263,23 @@ if ! dns_works; then
     exit 1
 fi
 
-# 4. Pin nc to the OpenBSD variant. Both netcat-openbsd and netcat-traditional
+# 5. Postflight Docker check. Confirms we ended up on docker-ce and that the
+#    v2 compose plugin resolves — the two things the migration above could
+#    plausibly leave half-done. Non-fatal: 40-services.sh handles the group
+#    and service, and a broken docker shouldn't block locale/shell setup.
+if command -v docker > /dev/null 2>&1; then
+    log "docker: $(docker --version 2>/dev/null || echo '<version query failed>')"
+    if docker compose version > /dev/null 2>&1; then
+        ok "docker compose (v2 plugin) available"
+    else
+        warn "'docker compose' did not respond — check that"
+        warn "docker-compose-plugin installed cleanly."
+    fi
+else
+    warn "docker CLI not on PATH after install — check the apt output above."
+fi
+
+# 6. Pin nc to the OpenBSD variant. Both netcat-openbsd and netcat-traditional
 #    register /bin/nc.openbsd and /bin/nc.traditional under /etc/alternatives/nc.
 #    We want the OpenBSD one: better IPv6 support, -N (shutdown on EOF), and
 #    it's what most tooling and write-ups assume. Note Debian builds it

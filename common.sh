@@ -209,22 +209,38 @@ os_codename() {
     ( . /etc/os-release 2>/dev/null && printf '%s' "${VERSION_CODENAME:-}" )
 }
 
-# Whether docker-ce (from download.docker.com) is already installed on this
-# box. Any of docker-ce, docker-ce-cli, containerd.io, or
-# docker-buildx-plugin means Debian's docker.io would collide on
-# /usr/libexec/docker/cli-plugins/docker-buildx during unpack. Existing
-# docker-ce installs on long-lived servers should be respected — we just
-# skip docker.io in that case; the docker group and CLI are already there.
-docker_ce_installed() {
-    # 'local' is critical here — the caller in 10-packages.sh iterates
-    # with a variable also named 'pkg'. Without local, this loop's last
-    # iteration would clobber the outer 'pkg' to 'docker-buildx-plugin',
-    # causing that name to end up in the install list even though it's
-    # not in any manifest. Debugged the hard way on an OCI Ubuntu box
-    # with no docker of any kind installed.
+# Debian/Ubuntu's own Docker packages. We install Docker from
+# download.docker.com instead (see the docker repo block in 10-packages.sh),
+# and the two stacks cannot coexist: docker.io ships `docker-buildx` while
+# docker-ce ships `docker-buildx-plugin`, and both own
+# /usr/libexec/docker/cli-plugins/docker-buildx — dpkg aborts during unpack
+# if it meets both. `containerd` vs `containerd.io` collide the same way.
+#
+# List mirrors the one in Docker's own install docs, plus docker-buildx and
+# docker-compose-v2 which Debian splits into separate packages.
+DISTRO_DOCKER_PKGS=(
+    docker.io
+    docker-doc
+    docker-compose
+    docker-compose-v2
+    docker-buildx
+    podman-docker
+    containerd
+    runc
+)
+
+# Print the distro Docker packages currently installed, one per line. Empty
+# output means there is nothing to migrate off.
+installed_distro_docker_pkgs() {
+    # 'local' is critical here — callers in 10-packages.sh iterate with a
+    # variable also named 'pkg'. Without local, this loop's last iteration
+    # leaks into the caller's scope, which previously ended up putting a
+    # package name into the install list that was in no manifest at all.
+    # Debugged the hard way on an OCI Ubuntu box.
     local pkg
-    for pkg in docker-ce docker-ce-cli containerd.io docker-buildx-plugin; do
-        apt_installed "$pkg" && return 0
+    for pkg in "${DISTRO_DOCKER_PKGS[@]}"; do
+        if apt_installed "$pkg"; then
+            printf '%s\n' "$pkg"
+        fi
     done
-    return 1
 }

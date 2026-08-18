@@ -58,12 +58,19 @@ mtr-tiny
 traceroute
 
 # Containers — useful on both workstation and server profile.
-# Note: docker-compose (Python v1) was removed from Trixie. docker.io provides
-# 'docker compose' (subcommand) via the integrated compose plugin. If
-# docker-ce (from download.docker.com) is already installed, 10-packages.sh
-# detects the conflict and skips docker.io — the docker CLI + group are
-# provided by docker-ce anyway.
-docker.io
+#
+# Docker comes from Docker's own apt repo (download.docker.com), not from
+# the distro's docker.io. 10-packages.sh configures that repo and removes
+# any conflicting distro Docker packages first — see DISTRO_DOCKER_PKGS in
+# common.sh for why the two stacks can't coexist.
+#
+# This is the upstream-recommended package set: engine, CLI, containerd,
+# and the buildx/compose v2 CLI plugins ('docker compose', no hyphen).
+docker-ce
+docker-ce-cli
+containerd.io
+docker-buildx-plugin
+docker-compose-plugin
 
 # GPG (base — YubiKey-specific packages live in desktop.txt)
 gnupg
