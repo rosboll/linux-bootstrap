@@ -72,5 +72,13 @@ containerd.io
 docker-buildx-plugin
 docker-compose-plugin
 
+# Inbound SSH access. 45-ssh-authorized-keys.sh runs `ssh-import-id
+# gh:rosboll` to pull the account's published keys into
+# ~/.ssh/authorized_keys. Both profiles: on servers it satisfies
+# 70-ssh-hardening.sh's lock-out precheck, on workstations it's what lets
+# the box accept SSH from the rest of the fleet. Preinstalled on Ubuntu
+# cloud images, not on Debian.
+ssh-import-id
+
 # GPG (base — YubiKey-specific packages live in desktop.txt)
 gnupg

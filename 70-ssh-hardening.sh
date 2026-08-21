@@ -39,22 +39,20 @@ if ! [ -x /usr/sbin/sshd ]; then
     exit 0
 fi
 
-# 2. Lock-out precheck. Count non-comment non-blank lines in authorized_keys —
-#    a proxy for "will key auth work after we disable passwords." We can't
-#    verify the private key end from here, so this is the closest we can
-#    reasonably get.
-count_authorized_keys() {
-    local file="$1"
-    [ -f "$file" ] || { echo 0; return; }
-    awk 'NF && !/^[[:space:]]*#/ {n++} END {print n+0}' "$file"
-}
-
+# 2. Lock-out precheck. count_authorized_keys (common.sh) counts non-comment
+#    non-blank lines — a proxy for "will key auth work after we disable
+#    passwords." We can't verify the private key end from here, so this is the
+#    closest we can reasonably get. 45-ssh-authorized-keys.sh normally
+#    populates this file earlier in the run; this stays as the backstop for
+#    when it didn't (no network at the time, run out of order, etc.).
 user_keys=$(count_authorized_keys "$HOME/.ssh/authorized_keys")
 if [ "$user_keys" -lt 1 ]; then
     err "$USER has no keys in ~/.ssh/authorized_keys."
     err "Disabling PasswordAuthentication now would lock you out."
     err ""
-    err "Add your public key first, e.g.:"
+    err "Add your public key first, either:"
+    err "    ./45-ssh-authorized-keys.sh          # imports from GitHub"
+    err "or by hand:"
     err "    mkdir -p ~/.ssh && chmod 700 ~/.ssh"
     err "    printf 'ssh-ed25519 AAAA... comment\\n' >> ~/.ssh/authorized_keys"
     err "    chmod 600 ~/.ssh/authorized_keys"

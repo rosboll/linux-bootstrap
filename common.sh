@@ -160,6 +160,17 @@ EOF
     ok "${name} apt repo configured"
 }
 
+# Count usable entries in an authorized_keys file — non-comment, non-blank
+# lines. A proxy for "will key auth work here." Used by
+# 45-ssh-authorized-keys.sh to report what the import changed, and by
+# 70-ssh-hardening.sh as the precheck that stops us disabling password
+# auth on a host with no way back in.
+count_authorized_keys() {
+    local file="$1"
+    [ -f "$file" ] || { echo 0; return; }
+    awk 'NF && !/^[[:space:]]*#/ {n++} END {print n+0}' "$file"
+}
+
 # Check if the current user belongs to a group.
 in_group() {
     id -nG "$USER" | tr ' ' '\n' | grep -qx "$1"

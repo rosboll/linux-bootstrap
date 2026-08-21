@@ -64,6 +64,7 @@ cd ~/linux-bootstrap
 ./20-locale.sh
 ./30-shell.sh           # also clones rosboll/dotfiles and stows it
 ./40-services.sh
+./45-ssh-authorized-keys.sh   # imports gh:rosboll keys into authorized_keys
 ./50-yubikey.sh
 ./60-pentest-tools.sh   # optional; run directly if you want pentest tools
 
@@ -156,6 +157,48 @@ hangs, this is what you're hitting. To make a hung run easier to diagnose,
 operation and exits with a clear hint instead of silently hanging behind
 `tee`.
 
+## Authorized keys from GitHub
+
+`45-ssh-authorized-keys.sh` runs `ssh-import-id gh:rosboll`, which fetches
+<https://github.com/rosboll.keys> over HTTPS and appends anything not already
+present to `~/.ssh/authorized_keys`. It runs on **both** profiles: on a server
+it satisfies `70-ssh-hardening.sh`'s lock-out precheck without the manual
+pubkey paste; on a workstation it's what lets the box accept SSH from the rest
+of the fleet.
+
+Re-running is a no-op — `ssh-import-id` skips keys already in the file and
+tags each line it adds with `# ssh-import-id gh:rosboll`, so imported keys
+stay distinguishable from hand-added ones. The script prints the fingerprint
+of every key the host accepts afterwards, imported or not.
+
+Failure is non-fatal by design: no `ssh-import-id` binary, no DNS, or a failed
+fetch all log a warning and return 0 rather than aborting the whole
+`run-all.sh`. `70-ssh-hardening.sh` is the backstop that still refuses to
+disable password auth if the file ended up empty.
+
+Override the account for a one-off host:
+
+```bash
+GITHUB_USER=someone-else ./45-ssh-authorized-keys.sh
+```
+
+**Trust model, stated plainly** — this is a bootstrap convenience, not key
+management:
+
+- **Import-only.** Deleting a key on GitHub does *not* remove it from hosts
+  that already imported it. Revocation means editing `~/.ssh/authorized_keys`
+  on each machine.
+- **The anchor is the username**, resolved at run time. Whatever
+  `github.com/rosboll.keys` serves at that moment gets login as a
+  sudo-capable user — so the GitHub account is a credential of the same
+  weight as the machines it lets you into. 2FA on that account is load-bearing.
+
+**If you add scripts**: the `45-` prefix is deliberate. `run-all.sh`'s
+`should_run()` maps `5*` to desktop-only and `6*` to `--pentest` only, so a
+`65-` script would be silently skipped on servers — the profile that needs it
+most. It also has to sort before `70-ssh-hardening.sh`. The `1x`–`4x` band is
+the one that runs unconditionally.
+
 ## Linting
 
 ```bash
@@ -184,6 +227,7 @@ test infrastructure that manufactures confidence is worse than none.
 | 20-locale.sh               | both           | `LANG=en_GB.UTF-8` (language) + `LC_*=sv_SE.UTF-8` (formats: ISO dates, 24h, metric) + `TIME_STYLE=long-iso` + comments out sshd `AcceptEnv`. KDE `plasma-localerc` only on desktop | Yes |
 | 30-shell.sh                | both           | zsh as default for $USER and root + clone & stow dotfiles into both + ssh-agent user unit + mask gcr-ssh-agent | Yes |
 | 40-services.sh             | both           | docker group. libvirt/kvm/wireshark groups + libvirt default network only on desktop       | Yes        |
+| 45-ssh-authorized-keys.sh  | both           | `ssh-import-id gh:rosboll` — imports the public keys published on the GitHub account into `~/.ssh/authorized_keys`. Non-fatal on failure. Prints the fingerprint of every key the host now accepts | Yes        |
 | 50-yubikey.sh              | desktop        | libpam-u2f, PAM config for sudo (touch only, skipped over SSH via pam_exec helper)         | Yes        |
 | 60-pentest-tools.sh        | opt-in         | nuclei, subfinder, httpx, naabu, interactsh-client, ffuf, gobuster, kerbrute, mitmproxy, netexec, responder, sqlmap, nikto, hydra, feroxbuster, semgrep, impacket, certipy-ad, RustHound-CE, Obsidian. Source of each tool: apt / pipx / go install / cargo install / git clone — see the script. | Yes |
 | 70-ssh-hardening.sh        | server         | Drop-in `sshd_config.d/01-bootstrap-hardening.conf` (the `01-` prefix is load-bearing — see below): PasswordAuthentication no, PermitRootLogin prohibit-password, ChallengeResponseAuthentication no, KbdInteractiveAuthentication no, MaxAuthTries 4, LoginGraceTime 30. Refuses to run if `$USER` has no `authorized_keys` (would lock you out). `sshd -t` before reload. | Yes |
@@ -197,8 +241,9 @@ posture. Runs on Debian 13 and Ubuntu LTS (24.04 / 22.04).
 
 **What runs**: `10-packages.sh` (with `packages/base.txt` +
 `packages/server.txt`), `20-locale.sh` (no plasma-localerc),
-`30-shell.sh`, `40-services.sh` (docker group only), then
-`70-ssh-hardening.sh`, `80-unattended-upgrades.sh`, `85-timezone.sh`.
+`30-shell.sh`, `40-services.sh` (docker group only),
+`45-ssh-authorized-keys.sh`, then `70-ssh-hardening.sh`,
+`80-unattended-upgrades.sh`, `85-timezone.sh`.
 
 **What doesn't**: `50-yubikey.sh` (no PAM u2f), the KDE plasma-localerc
 block in `20-locale.sh`, and libvirt/kvm/wireshark groups in
@@ -210,7 +255,13 @@ comes from `packages/base.txt`.
 
 **SSH lockdown precheck**: `70-ssh-hardening.sh` refuses to write
 `PasswordAuthentication no` unless `$USER` has at least one entry in
-`~/.ssh/authorized_keys`. Do this before running:
+`~/.ssh/authorized_keys`. `45-ssh-authorized-keys.sh` runs earlier in the
+same `run-all.sh --server` invocation and normally satisfies this for you —
+see [Authorized keys from GitHub](#authorized-keys-from-github).
+
+The precheck stays as the backstop for when the import didn't happen (no
+egress on the host at the time, scripts run out of order, `GITHUB_USER`
+pointed somewhere with no keys). If it trips, populate the file by hand:
 
 ```bash
 # From the machine's local/serial/hypervisor console is safest —
